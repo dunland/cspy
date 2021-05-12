@@ -61,6 +61,7 @@ import os
 import socket
 from multiprocessing import Process, Manager
 import random
+import pyrealsense2 as rs
 
 
 class Cityscopy:
@@ -85,6 +86,50 @@ class Cityscopy:
         self.POINT_INDEX = None
         self.POINTS = None
         self.MOUSE_POSITION = None
+
+    ##################################################
+
+    def print_cams(self):
+        print("reading first 100 cameras...")
+        index = 0
+        arr = []
+        for index in range(0, 100):
+            cap = cv2.VideoCapture(index)
+            # returns video frames; False if no frames have been grabbed
+            if cap.read()[0] != False:
+                arr.append(index)
+            cap.release()
+        print("found cameras: ", arr)
+
+    ##################################################
+
+    def realsense_init(self):
+        # Configure depth and color streams
+        self.pipeline = rs.pipeline()
+        config = rs.config()
+
+        # Get device product line for setting a supporting resolution
+        pipeline_wrapper = rs.pipeline_wrapper(self.pipeline)
+        pipeline_profile = config.resolve(pipeline_wrapper)
+        self.device = pipeline_profile.get_device()
+        device_product_line = str(self.device.get_info(rs.camera_info.product_line))
+        print("using Intel Realsense", device_product_line)
+
+        self.device = pipeline_profile.get_device().first_color_sensor()
+        self.device.set_option(rs.option.exposure, 166)
+        self.device.set_option(rs.option.gain, 64)
+
+        # Start streaming
+        try:
+            # setup for USB 3
+            config.enable_stream(rs.stream.color, 1280, 720, rs.format.bgr8, 30)
+            self.pipeline.start(config)
+        except:
+            # setup for USB 2
+            config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
+            self.pipeline.start(config)
+
+        print("Realsense initialization complete.")
 
     ##################################################
 
@@ -114,7 +159,7 @@ class Cityscopy:
 
      # load the initial keystone data from file
         keystone_points_array = np.loadtxt(
-            self.get_folder_path()+'keystone.txt', dtype=np.float32)
+            self.get_folder_path() + 'keystone.txt', dtype=np.float32)
 
         # break it to points
         ulx = keystone_points_array[0][0]
@@ -144,7 +189,6 @@ class Cityscopy:
 
         cell_gap = self.table_settings['cell_gap']
 
-
         # init type list array
         TYPES_LIST = []
 
@@ -153,24 +197,47 @@ class Cityscopy:
 
         # serial num of camera, to switch between cameras
         camPos = self.table_settings['camId']
+
+        # check if using intel realsense camera or not
+        self.using_realsense = self.table_settings['realsense']
+
         # try from a device 1 in list, not default webcam
-        video_capture = cv2.VideoCapture(camPos)
+        if self.using_realsense == False:
+            video_capture = cv2.VideoCapture(camPos)
+        else:
+            self.realsense_init()
+            # video_capture = self.pipeline
         time.sleep(1)
 
-        if grid_dimensions_y < grid_dimensions_x:
-            # get the smaller of two grid ratio x/y or y/x
-            grid_ratio = grid_dimensions_y / grid_dimensions_x
-            video_resolution_x = int(video_capture.get(3))
-            video_resolution_y = int(video_capture.get(3)*grid_ratio)
+        if self.using_realsense == False:
+
+            if grid_dimensions_y < grid_dimensions_x:
+                # get the smaller of two grid ratio x/y or y/x
+                grid_ratio = grid_dimensions_y / grid_dimensions_x
+                video_resolution_x = int(video_capture.get(3))
+                video_resolution_y = int(video_capture.get(3) * grid_ratio)
+            else:
+                # get the smaller of two grid ratio x/y or y/x
+                grid_ratio = grid_dimensions_x / grid_dimensions_y
+                video_resolution_x = int(video_capture.get(3) * grid_ratio)
+                video_resolution_y = int(video_capture.get(3))
+
         else:
-            # get the smaller of two grid ratio x/y or y/x
-            grid_ratio = grid_dimensions_x / grid_dimensions_y
-            video_resolution_x = int(video_capture.get(3)*grid_ratio)
-            video_resolution_y = int(video_capture.get(3))
+            if grid_dimensions_y < grid_dimensions_x:
+                # get the smaller of two grid ratio x/y or y/x
+                grid_ratio = grid_dimensions_y / grid_dimensions_x
+                video_resolution_x = self.pipeline.wait_for_frames().get_color_frame().get_width()
+                video_resolution_y = self.pipeline.wait_for_frames()\
+                    .get_color_frame().get_height() * grid_ratio
+            else:
+                # get the smaller of two grid ratio x/y or y/x
+                grid_ratio = grid_dimensions_x / grid_dimensions_y
+                video_resolution_x = self.pipeline.wait_for_frames()\
+                    .get_color_frame().get_width() * grid_ratio
+                video_resolution_y = self.pipeline.\
+                    wait_for_frames().get_color_frame().get_height()
 
-            # video_resolution_y = int(video_capture.get(3))
-
-            # define the video window
+        # define the video window
         cv2.namedWindow('scanner_gui_window', cv2.WINDOW_NORMAL)
         cv2.resizeWindow('scanner_gui_window', 400, 400)
         cv2.moveWindow('scanner_gui_window', 10, 100)
@@ -184,8 +251,8 @@ class Cityscopy:
         }
 
         # define the size for each scanner
-        x_ratio = int(video_resolution_x/(grid_dimensions_x*4))
-        y_ratio = int(video_resolution_y/(grid_dimensions_y*4))
+        x_ratio = int(video_resolution_x / (grid_dimensions_x * 4))
+        y_ratio = int(video_resolution_y / (grid_dimensions_y * 4))
         scanner_square_size = np.minimum(x_ratio, y_ratio)
 
         # create the location  array of scanners
@@ -194,30 +261,43 @@ class Cityscopy:
             video_resolution_y, scanner_square_size)
 
         # resize video resolution if cell gaps are used:
-        video_resolution_x = video_resolution_x + grid_dimensions_x * cell_gap
-        video_resolution_y = video_resolution_y + grid_dimensions_y * cell_gap
+        video_resolution_x = int(video_resolution_x + grid_dimensions_x * cell_gap)
+        video_resolution_y = int(video_resolution_y + grid_dimensions_y * cell_gap)
 
     # run the video loop forever
         while True:
-            # get a new matrix transformation every frame
-            keystone_data = self.transfrom_matrix(
-                video_resolution_x, video_resolution_y, self.listen_to_UI_interaction(self.init_keystone))
+
+            if self.using_realsense == True:
+                frames = self.pipeline.wait_for_frames()  # returns composite_frame
+                color_frame = frames.get_color_frame()  # returns video_frame
+            else:
+                # read video frames
+                RET, color_frame = video_capture.read()
 
             # zero an array to collect the scanners
             CELL_COLORS_ARRAY = []
 
-            # read video frames
-            RET, this_frame = video_capture.read()
-            if RET is False:
-                pass
-            # else if camera capture is ok
-            else:
+            # get a new matrix transformation every frame
+            keystone_data = self.transfrom_matrix(
+                video_resolution_x, video_resolution_y, self.listen_to_UI_interaction(self.init_keystone))
+
                 # mirror camera
-                if self.table_settings['mirror_cam'] is True:
-                    this_frame = cv2.flip(this_frame, 1)
-                    # warp the video based on keystone info
-                keystoned_video = cv2.warpPerspective(
-                    this_frame, keystone_data, (video_resolution_x, video_resolution_y))
+            if self.table_settings['mirror_cam'] is True:
+                if self.using_realsense == True:                    
+                    color_frame = cv2.flip(color_frame, 1)
+                else:
+                    # mirror camera
+                    if RET != False:
+                        color_frame = cv2.flip(color_frame, 1)
+
+            if self.using_realsense == True:
+                color_frame = np.asanyarray(color_frame.get_data())
+
+            # warp the video based on keystone info
+            video_resolution_x = int(video_resolution_x)  # convert to int. will cause an error in cv2.warpPerspective() otherwise.
+            video_resolution_y = int(video_resolution_y)
+            keystoned_video = cv2.warpPerspective(
+                color_frame, keystone_data, (video_resolution_x, video_resolution_y))
 
             # cell counter
             count = 0
@@ -230,16 +310,16 @@ class Cityscopy:
 
                 # use this to control reduction of scanner size
                 this_scanner_max_dimension = int(scanner_square_size)
-                scanner_reduction = int(scanner_square_size/4)
+                scanner_reduction = int(scanner_square_size / 4)
                 # short vars
-                x_red = x + this_scanner_max_dimension-scanner_reduction
-                y_red = y + this_scanner_max_dimension-scanner_reduction
+                x_red = x + this_scanner_max_dimension - scanner_reduction
+                y_red = y + this_scanner_max_dimension - scanner_reduction
 
                 # set scanner crop box size and position
                 # at x,y + crop box size
 
-                this_scanner_size = keystoned_video[y+scanner_reduction:y_red,
-                                                    x+scanner_reduction:x_red]
+                this_scanner_size = keystoned_video[y + scanner_reduction:y_red,
+                                                    x + scanner_reduction:x_red]
 
                 # draw rects with mean value of color
                 mean_color = cv2.mean(this_scanner_size)
@@ -249,7 +329,8 @@ class Cityscopy:
                 mean_color_RGB = np.uint8([[[color_b, color_g, color_r]]])
 
                 # select the right color based on sample
-                scannerCol = self.select_color_by_mean_value(mean_color_RGB)
+                scannerCol = self.select_color_by_mean_value(
+                    mean_color_RGB)
 
                 # add colors to array for type analysis
                 CELL_COLORS_ARRAY.append(scannerCol)
@@ -261,10 +342,10 @@ class Cityscopy:
                 if self.table_settings['gui'] is True:
                     # draw rects with frame colored by range result
                     cv2.rectangle(keystoned_video,
-                                  (x+scanner_reduction,
-                                   y+scanner_reduction),
-                                  (x_red, y_red),
-                                  thisColor, 1)
+                                    (x + scanner_reduction,
+                                    y + scanner_reduction),
+                                    (x_red, y_red),
+                                    thisColor, 1)
 
                     # cell counter
                 count = count + 1
@@ -272,7 +353,6 @@ class Cityscopy:
             # reduce unnecessary scan analysis and sending by comparing
             # the list of scanned cells to an old one
             if CELL_COLORS_ARRAY != OLD_CELL_COLORS_ARRAY:
-
                 # send array to method for checking types
                 TYPES_LIST = self.find_type_in_tags_array(
                     CELL_COLORS_ARRAY, array_of_tags_from_json,
@@ -305,7 +385,7 @@ class Cityscopy:
     def ui_selected_corner(self, x, y, vid):
         """prints text on video window"""
 
-        mid = (int(x/2), int(y/2))
+        mid = (int(x / 2), int(y / 2))
         if self.selected_corner is None:
             # font
             font = cv2.FONT_HERSHEY_SIMPLEX
@@ -317,7 +397,7 @@ class Cityscopy:
             # Line thickness of 2 px
             thickness = 2
             cv2.putText(vid, 'select corners using 1,2,3,4 and move using A/W/S/D',
-                        (5, int(y/2)), font,
+                        (5, int(y / 2)), font,
                         fontScale, color, thickness, cv2.LINE_AA)
         else:
             case = {
@@ -355,9 +435,9 @@ class Cityscopy:
         # screen size and the x dim of the grid
         # to center the grid in both Y & X
         grid_x_offset = int(0.5 *
-                            (video_res_x - (grid_dimensions_x*scanner_square_size*4)))
+                            (video_res_x - (grid_dimensions_x * scanner_square_size * 4)))
         grid_y_offset = int(0.5 *
-                            (video_res_y - (grid_dimensions_y*scanner_square_size*4)))
+                            (video_res_y - (grid_dimensions_y * scanner_square_size * 4)))
 
         # create the list of points
         pixel_coordinates_list = []
@@ -366,8 +446,8 @@ class Cityscopy:
         for y in range(0, grid_dimensions_y):
             for x in range(0, grid_dimensions_x):
 
-                x_positions = x * (scanner_square_size*4+cell_gap)
-                y_positions = y * (scanner_square_size*4+cell_gap)
+                x_positions = x * (scanner_square_size * 4 + cell_gap)
+                y_positions = y * (scanner_square_size * 4 + cell_gap)
 
                 # make the actual location for the 4x4 scanner points
                 for i in range(0, 4):
@@ -375,9 +455,9 @@ class Cityscopy:
                         # add them to list
                         pixel_coordinates_list.append(
                             # x value of this scanner location
-                            [grid_x_offset+x_positions + (i*scanner_square_size),
+                            [grid_x_offset + x_positions + (i * scanner_square_size),
                              # y value of this scanner location
-                             grid_y_offset+y_positions + (j*scanner_square_size)])
+                             grid_y_offset + y_positions + (j * scanner_square_size)])
         return pixel_coordinates_list
 
     ##################################################
@@ -407,7 +487,11 @@ class Cityscopy:
                     if self.table_settings['cityio'] is True:
                         self.send_json_to_cityIO(json.dumps(scan_results))
                     else:
+                        # send as string via UDP:
                         self.send_json_to_UDP(scan_results)
+                        # save json to disk:
+                        with open('settings/api.json', 'w') as output_file:
+                            json.dump({'grid':scan_results}, output_file)
                 except Exception as ERR:
                     print(ERR)
                 # match the two grid after send
@@ -416,12 +500,13 @@ class Cityscopy:
 
                 # debug print
                 print('\n', 'CityScopy grid sent at:', datetime.now())
+                # print(scan_results)
 
     ##################################################
 
     def send_json_to_cityIO(self, cityIO_json):
         '''
-        sends the grid to cityIO 
+        sends the grid to cityIO
         '''
         # defining the api-endpoint
         API_ENDPOINT = "https://cityio.media.mit.edu/api/table/update/" + \
@@ -461,7 +546,7 @@ class Cityscopy:
         """
 
         # init array for json fields
-        settings_file = self.get_folder_path()+self.SETTINGS_PATH
+        settings_file = self.get_folder_path() + self.SETTINGS_PATH
         # open json file
         with open(settings_file) as d:
             data = json.load(d)
@@ -495,6 +580,7 @@ class Cityscopy:
         # INTERACTION
         corner_keys = ['1', '2', '3', '4']
         move_keys = ['w', 'a', 's', 'd']
+        realsense_keys = ['e', 'r', 'g', 'h']
 
         KEY_STROKE = cv2.waitKey(1)
         if chr(KEY_STROKE & 255) in corner_keys:
@@ -547,6 +633,41 @@ class Cityscopy:
             self.selected_corner = None
             self.save_keystone_to_file(
                 self.listen_to_UI_interaction(init_keystone))
+
+        # realsense exposure control
+        if self.using_realsense:
+            if chr(KEY_STROKE & 255) in realsense_keys:
+                # increase exposure
+                if chr(KEY_STROKE & 255) == 'e':
+                    exposure = self.device.get_option(rs.option.exposure)
+                    self.device.set_option(rs.option.exposure, exposure + int(exposure/10))
+                
+                # decrease exposure
+                elif chr(KEY_STROKE & 255) == 'r':
+                    exposure = self.device.get_option(rs.option.exposure)
+                    if exposure > 1:    
+                        self.device.set_option(rs.option.exposure, exposure - exposure/10)
+                
+                # increase gain
+                elif chr(KEY_STROKE & 255) == 'g':
+                    gain = self.device.get_option(rs.option.gain)
+                    self.device.set_option(rs.option.gain, gain + int(gain/10))
+
+                # decrease gain
+                elif chr(KEY_STROKE & 255) == 'h':
+                    gain = self.device.get_option(rs.option.gain)
+                    if gain > 1:
+                        self.device.set_option(rs.option.gain, gain - gain/10)
+
+                print("exposure:", self.device.get_option(rs.option.exposure),\
+                      "gain:", self.device.get_option(rs.option.gain))
+
+            # reset realsense values to standard:
+            if chr(KEY_STROKE & 255) == ' ':
+                self.device.set_option(rs.option.gain, 64)
+                self.device.set_option(rs.option.exposure, 166)
+                print("exposure:", self.device.get_option(rs.option.exposure),\
+                      "gain:", self.device.get_option(rs.option.gain))
 
         ulx = init_keystone[0]
         uly = init_keystone[1]
@@ -639,6 +760,9 @@ class Cityscopy:
                 result_tag = [-1, -1]
             # add a list of results to the array
             scan_results_array.append(result_tag)
+
+        # print(json.dumps({'asd':scan_results_array}))            
+
         # finally, return this list to main program for UDP
         return scan_results_array
 
@@ -668,7 +792,7 @@ class Cityscopy:
             else:
                 # if no rotation was found go to next tag
                 # in tag list
-                tags_array_counter = tags_array_counter+1
+                tags_array_counter = tags_array_counter + 1
 
     ##################################################
 
@@ -689,13 +813,19 @@ class Cityscopy:
 
     def keystone(self):
         # file path to save
-        self.KEYSTONE_PATH = self.get_folder_path() + '/'+"keystone.txt"
+        self.KEYSTONE_PATH = self.get_folder_path() + '/' + "keystone.txt"
         print('keystone path:', self.KEYSTONE_PATH)
 
         # serial num of camera, to switch between cameras
         camPos = self.table_settings['camId']
+        self.using_realsense = self.table_settings['realsense']
+
         # try from a device 1 in list, not default webcam
-        WEBCAM = cv2.VideoCapture(camPos)
+        if self.using_realsense == False:
+            WEBCAM = cv2.VideoCapture(camPos)
+        else:
+            self.realsense_init()
+
         time.sleep(1)
 
         # video winodw
@@ -719,9 +849,17 @@ class Cityscopy:
                 # wait for clicks
                 cv2.setMouseCallback('canvas', save_this_point)
                 # read the WEBCAM frames
-                _, self.FRAME = WEBCAM.read()
+                if self.using_realsense == False:
+                    _, self.FRAME = WEBCAM.read()
+                else:
+                    self.FRAME = self.pipeline.wait_for_frames().get_color_frame()
+
                 if self.table_settings['mirror_cam'] is True:
                     self.FRAME = cv2.flip(self.FRAME, 1)
+
+                if self.using_realsense == True:
+                    self.FRAME = np.asanyarray(self.FRAME.get_data())
+
                 # draw mouse pos
                 cv2.circle(self.FRAME, self.MOUSE_POSITION, 10, (0, 0, 255), 1)
                 cv2.circle(self.FRAME, self.MOUSE_POSITION, 1, (0, 0, 255), 2)
@@ -748,5 +886,8 @@ class Cityscopy:
             np.savetxt(self.KEYSTONE_PATH, self.POINTS)
             print("keystone initial points were saved")
 
-        WEBCAM.release()
+        if self.using_realsense == False:
+            WEBCAM.release()
+        else:
+            self.pipeline.stop()
         cv2.destroyAllWindows()
