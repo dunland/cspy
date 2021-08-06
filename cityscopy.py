@@ -867,11 +867,15 @@ class Cityscopy:
                 else:
                     self.FRAME = self.pipeline.wait_for_frames().get_color_frame()
 
-                if self.table_settings['mirror_cam'] is True:
-                    self.FRAME = cv2.flip(self.FRAME, 1)
-
                 if self.using_realsense == True:
                     self.FRAME = np.asanyarray(self.FRAME.get_data())
+
+                # mirror cam:
+                if self.table_settings['mirror_cam'] is True:
+                    if self.using_realsense == False:
+                        self.FRAME = cv2.flip(self.FRAME, 1)
+                    # else:
+                    #     self.FRAME = np.flip(self.FRAME, 1)
 
                 # draw mouse pos
                 cv2.circle(self.FRAME, self.MOUSE_POSITION, 10, (0, 0, 255), 1)
