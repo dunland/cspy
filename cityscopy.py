@@ -292,16 +292,17 @@ class Cityscopy:
             keystone_data = self.transfrom_matrix(
                 video_resolution_x, video_resolution_y, self.listen_to_UI_interaction(self.init_keystone))
 
-            # mirror camera
+            # mirror camera (webcam)
             if self.table_settings['mirror_cam'] is True:
-                if self.using_realsense == True:
-                    color_frame = cv2.flip(color_frame, 1)
-                else:
+                if self.using_realsense == False:
                     if RET != False:
                         color_frame = cv2.flip(color_frame, 1)
 
             if self.using_realsense == True:
                 color_frame = np.asanyarray(color_frame.get_data())
+                # mirror camera (realsense)
+                if self.table_settings['mirror_cam'] is True:
+                    color_frame = np.flip(color_frame, 1)
 
             # warp the video based on keystone info
             video_resolution_x = int(video_resolution_x)  # convert to int. will cause an error in cv2.warpPerspective() otherwise.
