@@ -122,15 +122,26 @@ class Cityscopy:
         # Start streaming
         try:
             # setup for USB 3
-            config.enable_stream(rs.stream.color, 1280, 720, rs.format.bgr8, 30)
-            self.pipeline.start(config)
+            try:
+                config.enable_stream(rs.stream.color, 1920,
+                                     1080, rs.format.bgr8, 30)
+                print("trying to stream 1920x1080...", end=" ")
+                self.pipeline.start(config)
+            except Exception as e:
+                print("no success.")
+                config.enable_stream(rs.stream.color, 1280,
+                                     720, rs.format.bgr8, 30)
+                print("trying to stream 1280x720...", end=" ")
+                self.pipeline.start(config)
         except:
             # setup for USB 2
+            print("no success.")
             config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
+            print("streaming in 640x480...", end=" ")
             self.pipeline.start(config)
 
+        print("success!")
         print("Realsense initialization complete.")
-
     ##################################################
 
     def scan(self):
@@ -281,12 +292,11 @@ class Cityscopy:
             keystone_data = self.transfrom_matrix(
                 video_resolution_x, video_resolution_y, self.listen_to_UI_interaction(self.init_keystone))
 
-                # mirror camera
+            # mirror camera
             if self.table_settings['mirror_cam'] is True:
-                if self.using_realsense == True:                    
+                if self.using_realsense == True:
                     color_frame = cv2.flip(color_frame, 1)
                 else:
-                    # mirror camera
                     if RET != False:
                         color_frame = cv2.flip(color_frame, 1)
 
@@ -386,19 +396,19 @@ class Cityscopy:
         """prints text on video window"""
 
         mid = (int(x / 2), int(y / 2))
-        if self.selected_corner is None:
-            # font
-            font = cv2.FONT_HERSHEY_SIMPLEX
+        # if self.selected_corner is None:
+        #     # font
+        #     font = cv2.FONT_HERSHEY_SIMPLEX
 
-            # fontScale
-            fontScale = 1.2
-            # Blue color in BGR
-            color = (0, 0, 255)
-            # Line thickness of 2 px
-            thickness = 2
-            cv2.putText(vid, 'select corners using 1,2,3,4 and move using A/W/S/D',
-                        (5, int(y / 2)), font,
-                        fontScale, color, thickness, cv2.LINE_AA)
+        #     # fontScale
+        #     fontScale = 1.2
+        #     # Blue color in BGR
+        #     color = (0, 0, 255)
+        #     # Line thickness of 2 px
+        #     thickness = 2
+        #     cv2.putText(vid, 'select corners using 1,2,3,4 and move using A/W/S/D',
+        #                 (5, int(y / 2)), font,
+        #                 fontScale, color, thickness, cv2.LINE_AA)
         else:
             case = {
                 '1': [(0, 0), mid],
@@ -500,7 +510,7 @@ class Cityscopy:
 
                 # debug print
                 print('\n', 'CityScopy grid sent at:', datetime.now())
-                # print(scan_results)
+                print(scan_results)
 
     ##################################################
 
@@ -641,13 +651,13 @@ class Cityscopy:
                 if chr(KEY_STROKE & 255) == 'e':
                     exposure = self.device.get_option(rs.option.exposure)
                     self.device.set_option(rs.option.exposure, exposure + int(exposure/10))
-                
+
                 # decrease exposure
                 elif chr(KEY_STROKE & 255) == 'r':
                     exposure = self.device.get_option(rs.option.exposure)
-                    if exposure > 1:    
+                    if exposure > 1:
                         self.device.set_option(rs.option.exposure, exposure - exposure/10)
-                
+
                 # increase gain
                 elif chr(KEY_STROKE & 255) == 'g':
                     gain = self.device.get_option(rs.option.gain)
@@ -761,7 +771,7 @@ class Cityscopy:
             # add a list of results to the array
             scan_results_array.append(result_tag)
 
-        # print(json.dumps({'asd':scan_results_array}))            
+        # print(json.dumps({'asd':scan_results_array}))
 
         # finally, return this list to main program for UDP
         return scan_results_array
