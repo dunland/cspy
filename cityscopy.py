@@ -396,7 +396,8 @@ class Cityscopy:
         """prints text on video window"""
 
         mid = (int(x / 2), int(y / 2))
-        # if self.selected_corner is None:
+        if self.selected_corner is None:
+            pass
         #     # font
         #     font = cv2.FONT_HERSHEY_SIMPLEX
 
@@ -468,6 +469,7 @@ class Cityscopy:
                             [grid_x_offset + x_positions + (i * scanner_square_size),
                              # y value of this scanner location
                              grid_y_offset + y_positions + (j * scanner_square_size)])
+        print(pixel_coordinates_list)
         return pixel_coordinates_list
 
     ##################################################
