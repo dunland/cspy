@@ -49,8 +49,6 @@ of uniquely tagged LEGO array
 ##################################################
 '''
 
-
-import requests
 import cv2
 import numpy as np
 from datetime import timedelta
@@ -60,14 +58,11 @@ import json
 import os
 import socket
 from multiprocessing import Process, Manager
-import random
 import pyrealsense2 as rs
 
 
 class Cityscopy:
-    '''sacnner for CityScope'''
-
-    ##################################################
+    '''scanner for CityScope'''
 
     def __init__(self, path):
         '''init function '''
@@ -87,11 +82,8 @@ class Cityscopy:
         self.POINTS = None
         self.MOUSE_POSITION = None
 
-    ##################################################
-
     def print_cams(self):
         print("reading first 100 cameras...")
-        index = 0
         arr = []
         for index in range(0, 100):
             cap = cv2.VideoCapture(index)
@@ -100,8 +92,6 @@ class Cityscopy:
                 arr.append(index)
             cap.release()
         print("found cameras: ", arr)
-
-    ##################################################
 
     def realsense_init(self):
         # Configure depth and color streams
@@ -142,17 +132,15 @@ class Cityscopy:
 
         print("success!")
         print("Realsense initialization complete.")
-    ##################################################
 
     def scan(self):
-
         # define global list manager
         MANAGER = Manager()
         # create shared global list to work with both processes
         self.multiprocess_shared_dict = MANAGER.dict()
 
-        # init a dict with rand data to be shared among procceses
-        self.multiprocess_shared_dict['scan'] = [-1, -1]
+        # init a dict to be shared among procceses
+        self.multiprocess_shared_dict['scan'] = None
 
         # defines a multiprocess for sending the data
         self.process_send_packet = Process(target=self.create_data_json,
@@ -164,11 +152,8 @@ class Cityscopy:
         # join the two processes
         self.process_send_packet.join()
 
-    ##################################################
-
     def get_init_keystone(self):
-
-     # load the initial keystone data from file
+        # load the initial keystone data from file
         keystone_points_array = np.loadtxt(
             self.get_folder_path() + 'keystone.txt', dtype=np.float32)
 
@@ -184,8 +169,6 @@ class Cityscopy:
         # init keystone
         init_keystone = [ulx, uly, urx, ury, blx, bly, brx, bry]
         return init_keystone
-
-    ##################################################
 
     def scanner_function(self, multiprocess_shared_dict):
         # get init keystones
@@ -221,7 +204,6 @@ class Cityscopy:
         time.sleep(1)
 
         if self.using_realsense == False:
-
             if grid_dimensions_y < grid_dimensions_x:
                 # get the smaller of two grid ratio x/y or y/x
                 grid_ratio = grid_dimensions_y / grid_dimensions_x
@@ -275,9 +257,8 @@ class Cityscopy:
         video_resolution_x = int(video_resolution_x + grid_dimensions_x * cell_gap)
         video_resolution_y = int(video_resolution_y + grid_dimensions_y * cell_gap)
 
-    # run the video loop forever
+        # run the video loop forever
         while True:
-
             if self.using_realsense == True:
                 frames = self.pipeline.wait_for_frames()  # returns composite_frame
                 color_frame = frames.get_color_frame()  # returns video_frame
@@ -328,7 +309,6 @@ class Cityscopy:
 
                 # set scanner crop box size and position
                 # at x,y + crop box size
-
                 this_scanner_size = keystoned_video[y + scanner_reduction:y_red,
                                                     x + scanner_reduction:x_red]
 
@@ -358,7 +338,7 @@ class Cityscopy:
                                     (x_red, y_red),
                                     thisColor, 1)
 
-                    # cell counter
+                # cell counter
                 count = count + 1
 
             # reduce unnecessary scan analysis and sending by comparing
@@ -376,10 +356,6 @@ class Cityscopy:
                 # [!] Store the type list results in the multiprocess_shared_dict
                 multiprocess_shared_dict['scan'] = TYPES_LIST
 
-            else:
-                # else don't do it
-                pass
-
             if self.table_settings['gui'] is True:
                 # draw arrow to interaction area
                 self.ui_selected_corner(
@@ -391,27 +367,11 @@ class Cityscopy:
         video_capture.release()
         cv2.destroyAllWindows()
 
-    ##################################################
-
     def ui_selected_corner(self, x, y, vid):
         """prints text on video window"""
 
         mid = (int(x / 2), int(y / 2))
-        if self.selected_corner is None:
-            pass
-        #     # font
-        #     font = cv2.FONT_HERSHEY_SIMPLEX
-
-        #     # fontScale
-        #     fontScale = 1.2
-        #     # Blue color in BGR
-        #     color = (0, 0, 255)
-        #     # Line thickness of 2 px
-        #     thickness = 2
-        #     cv2.putText(vid, 'select corners using 1,2,3,4 and move using A/W/S/D',
-        #                 (5, int(y / 2)), font,
-        #                 fontScale, color, thickness, cv2.LINE_AA)
-        else:
+        if self.selected_corner is not None:
             case = {
                 '1': [(0, 0), mid],
                 '2':  [(x, 0), mid],
@@ -424,8 +384,6 @@ class Cityscopy:
                 vid, case[self.selected_corner][0],
                 case[self.selected_corner][1],
                 (0, 0, 255), 2)
-
-    ##################################################
 
     def get_scanner_pixel_coordinates(self, grid_dimensions_x, grid_dimensions_y, cell_gap, video_res_x, video_res_y, scanner_square_size):
         """Creates list of pixel coordinates for scanner.
@@ -473,16 +431,12 @@ class Cityscopy:
         print(pixel_coordinates_list)
         return pixel_coordinates_list
 
-    ##################################################
-
     def np_string_tags(self, json_data):
         # return each item for this field
         d = []
         for i in json_data:
             d.append(np.array([int(ch) for ch in i]))
         return d
-
-    ##################################################
 
     # 2nd proccess to
     def create_data_json(self, multiprocess_shared_dict):
@@ -495,16 +449,10 @@ class Cityscopy:
         while True:
             scan_results = multiprocess_shared_dict['scan']
             from_last_sent = datetime.now() - last_sent
-            if (scan_results != old_scan_results) and from_last_sent > SEND_INTERVAL:
+            if scan_results and scan_results != old_scan_results and from_last_sent > SEND_INTERVAL:
                 try:
-                    if self.table_settings['cityio'] is True:
-                        self.send_json_to_cityIO(json.dumps(scan_results))
-                    else:
-                        # send as string via UDP:
-                        self.send_json_to_UDP(scan_results)
-                        # save json to disk:
-                        with open('settings/api.json', 'w') as output_file:
-                            json.dump({'grid':scan_results}, output_file)
+                    # send as string via UDP:
+                    self.send_json_to_UDP(scan_results)
                 except Exception as ERR:
                     print(ERR)
                 # match the two grid after send
@@ -515,23 +463,6 @@ class Cityscopy:
                 print('\n', 'CityScopy grid sent at:', datetime.now())
                 print(scan_results)
 
-    ##################################################
-
-    def send_json_to_cityIO(self, cityIO_json):
-        '''
-        sends the grid to cityIO
-        '''
-        # defining the api-endpoint
-        API_ENDPOINT = "https://cityio.media.mit.edu/api/table/update/" + \
-            self.table_settings['cityscope_project_name'] + "/grid/"
-        # sending post request and saving response as response object
-        req = requests.post(url=API_ENDPOINT, data=cityIO_json)
-        if req.status_code != 200:
-            print("cityIO might be down. so sad.")
-        print("sending grid to", API_ENDPOINT,  req)
-
-    ##################################################
-
     def send_json_to_UDP(self, scan_results):
         # defining the udp endpoint
         UDP_IP = "127.0.0.1"
@@ -541,8 +472,6 @@ class Cityscopy:
             sock.sendto(str(scan_results).encode('utf-8'), (UDP_IP, UDP_PORT))
         except Exception as e:
             print(e)
-
-    ##################################################
 
     def parse_json_file(self, field):
         """
@@ -557,15 +486,12 @@ class Cityscopy:
 
         Returns the desired filed
         """
-
         # init array for json fields
         settings_file = self.get_folder_path() + self.SETTINGS_PATH
         # open json file
         with open(settings_file) as d:
             data = json.load(d)
-        return(data[field])
-
-    ##################################################
+        return data[field]
 
     def get_folder_path(self):
         """
@@ -575,8 +501,6 @@ class Cityscopy:
         loc = str(os.path.realpath(
             os.path.join(os.getcwd(), os.path.dirname(__file__)))) + '/'
         return loc
-
-    ##################################################
 
     def listen_to_UI_interaction(self, init_keystone):
         """
@@ -589,7 +513,6 @@ class Cityscopy:
 
         Returns 4x2 array of points location for key-stoning
         """
-
         # INTERACTION
         corner_keys = ['1', '2', '3', '4']
         move_keys = ['w', 'a', 's', 'd']
@@ -693,29 +616,22 @@ class Cityscopy:
 
         return np.asarray([(ulx, uly), (urx, ury), (blx, bly), (brx, bry)], dtype=np.float32)
 
-    ##################################################
-
     def save_keystone_to_file(self, keystone_data_from_user_interaction):
         """
         saves keystone data from user interaction.
 
         Steps:
         saves an array of points to file
-
         """
-
         filePath = self.get_folder_path() + "keystone.txt"
         np.savetxt(filePath, keystone_data_from_user_interaction)
         print("[!] keystone points were saved in", filePath)
-
-    ##################################################
 
     def transfrom_matrix(self, video_resolution_x, video_resolution_y, keyStonePts):
         '''
         NOTE: Aspect ratio must be flipped
         so that aspectRat[0,1] will be aspectRat[1,0]
         '''
-
         # inverted screen ratio for np source array
         video_aspect_ratio = (video_resolution_y, video_resolution_x)
         # np source points array
@@ -732,8 +648,6 @@ class Cityscopy:
 
         return transfromed_matrix
 
-    ##################################################
-
     def select_color_by_mean_value(self, mean_color_RGB):
         '''
         convert color to hsv for oclidian distance
@@ -744,8 +658,6 @@ class Cityscopy:
         else:
             this_color = 1
         return this_color
-
-    ##################################################
 
     def find_type_in_tags_array(self, cellColorsArray, tagsArray, mapArray,
                                 grid_dimensions_x, grid_dimensions_y):
@@ -774,12 +686,8 @@ class Cityscopy:
             # add a list of results to the array
             scan_results_array.append(result_tag)
 
-        # print(json.dumps({'asd':scan_results_array}))
-
         # finally, return this list to main program for UDP
         return scan_results_array
-
-    ##################################################
 
     def brick_rotation_check(self, this_16_bits, tagsArray, mapArray):
         tags_array_counter = 0
@@ -806,23 +714,6 @@ class Cityscopy:
                 # if no rotation was found go to next tag
                 # in tag list
                 tags_array_counter = tags_array_counter + 1
-
-    ##################################################
-
-    def udp_listener(self):
-        UDP_IP = "127.0.0.1"
-        UDP_PORT = 5000
-
-        sock = socket.socket(socket.AF_INET,  # Internet
-                             socket.SOCK_DGRAM)  # UDP
-        sock.bind((UDP_IP, UDP_PORT))
-        print("Starting UDP listener at:", UDP_IP, ' port: ', UDP_PORT, sock)
-
-        while True:
-            data, _ = sock.recvfrom(1024)  # buffer size is 1024 bytes
-            print('\n', data.decode())
-
-    ##################################################
 
     def keystone(self):
         # file path to save
