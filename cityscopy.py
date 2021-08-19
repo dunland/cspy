@@ -74,6 +74,8 @@ class Cityscopy:
 
         # init corners variables
         self.selected_corner = None
+        self.corner_direction = None
+        self.magnitude = 1
 
         # init keystone variables
         self.FRAME = None
@@ -201,7 +203,7 @@ class Cityscopy:
                 video_resolution_x = int(video_capture.get(3) * grid_ratio)
                 video_resolution_y = int(video_capture.get(3))
 
-        else:
+        else:  # with realsense camera
             if grid_dimensions_y < grid_dimensions_x:
                 # get the smaller of two grid ratio x/y or y/x
                 grid_ratio = grid_dimensions_y / grid_dimensions_x
@@ -356,10 +358,11 @@ class Cityscopy:
             }
 
             # print(type(self.selected_corner))
+            col = (0, 0, 255) if self.magnitude == 1 else (255,0,0)
             cv2.arrowedLine(
                 vid, case[self.selected_corner][0],
                 case[self.selected_corner][1],
-                (0, 0, 255), 2)
+                col, 2)
 
     def get_scanner_pixel_coordinates(self, grid_dimensions_x, grid_dimensions_y, cell_gap, video_res_x, video_res_y, scanner_square_size):
         """Creates list of pixel coordinates for scanner.
@@ -493,51 +496,55 @@ class Cityscopy:
 
         KEY_STROKE = cv2.waitKey(1)
         key = chr(KEY_STROKE & 255)
+        if chr(KEY_STROKE & 255) == '\t':
+            self.magnitude = 10 if self.magnitude == 1 else 1
+            print("MAGNITUDE", self.magnitude)
+        if self.selected_corner != None and chr(KEY_STROKE & 255) in move_keys:
+            self.corner_direction = chr(KEY_STROKE & 255)
 
         if key in corner_keys:
             self.selected_corner = key
 
         if self.selected_corner != None and key in move_keys:
             if self.selected_corner == '1':
-                if key == 'd':
-                    init_keystone[0] -= 1
-                elif key == 'a':
-                    init_keystone[0] += 1
-                elif key == 'w':
-                    init_keystone[1] += 1
-                elif key == 's':
-                    init_keystone[1] -= 1
+                if self.corner_direction == 'd':
+                    init_keystone[0] = init_keystone[0] - self.magnitude
+                elif self.corner_direction == 'a':
+                    init_keystone[0] = init_keystone[0] + self.magnitude
+                elif self.corner_direction == 'w':
+                    init_keystone[1] = init_keystone[1] + self.magnitude
+                elif self.corner_direction == 's':
+                    init_keystone[1] = init_keystone[1] - self.magnitude
 
             elif self.selected_corner == '2':
-                if key == 'd':
-                    init_keystone[2] -= 1
-                elif key == 'a':
-                    init_keystone[2] += 1
-                elif key == 'w':
-                    init_keystone[3] += 1
-                elif key == 's':
-                    init_keystone[3] -= 1
+                if self.corner_direction == 'd':
+                    init_keystone[2] = init_keystone[2] - self.magnitude
+                elif self.corner_direction == 'a':
+                    init_keystone[2] = init_keystone[2] + self.magnitude
+                elif self.corner_direction == 'w':
+                    init_keystone[3] = init_keystone[3] + self.magnitude
+                elif self.corner_direction == 's':
+                    init_keystone[3] = init_keystone[3] - self.magnitude
 
             elif self.selected_corner == '3':
-                if key == 'd':
-                    init_keystone[4] -= 1
-                elif key == 'a':
-                    init_keystone[4] += 1
-                elif key == 'w':
-                    init_keystone[5] += 1
-                elif key == 's':
-                    init_keystone[5] -= 1
+                if self.corner_direction == 'd':
+                    init_keystone[4] = init_keystone[4] - self.magnitude
+                elif self.corner_direction == 'a':
+                    init_keystone[4] = init_keystone[4] + self.magnitude
+                elif self.corner_direction == 'w':
+                    init_keystone[5] = init_keystone[5] + self.magnitude
+                elif self.corner_direction == 's':
+                    init_keystone[5] = init_keystone[5] - self.magnitude
 
             elif self.selected_corner == '4':
-                if key == 'd':
-                    init_keystone[6] -= 1
-                elif key == 'a':
-                    init_keystone[6] += 1
-                elif key == 'w':
-                    init_keystone[7] += 1
-                elif key == 's':
-                    init_keystone[7] -= 1
-
+                if self.corner_direction == 'd':
+                    init_keystone[6] = init_keystone[6] - self.magnitude
+                elif self.corner_direction == 'a':
+                    init_keystone[6] = init_keystone[6] + self.magnitude
+                elif self.corner_direction == 'w':
+                    init_keystone[7] = init_keystone[7] + self.magnitude
+                elif self.corner_direction == 's':
+                    init_keystone[7] = init_keystone[7] - self.magnitude
         #  saves to file
         elif key == 'k':
             # reset selected corner

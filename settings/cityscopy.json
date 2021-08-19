@@ -15,23 +15,23 @@
       "2",
       "3"
     ],
-    "nrows": 11,
-    "ncols": 11,
+    "nrows": 22,
+    "ncols": 22,
     "cell_gap": 5,
     "camId": 0,
-    "realsense": false,
-    "interval": 250,
+    "realsense": true,
+    "interval": 1000,
     "gui": true,
     "cityio": false,
     "tags": [
-      "0000000000000000",
       "1111111111111111",
+      "0000000000000000",
       "1111111100000000",
       "0011001111111111",
       "1100110000000000",
       "0011001111001100",
       "0111111111111111"
     ],
-    "mirror_cam": false
+    "mirror_cam": true
   }
 }
