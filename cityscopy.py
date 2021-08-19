@@ -257,7 +257,7 @@ class Cityscopy:
             CELL_COLORS_ARRAY = []
 
             # get a new matrix transformation every frame
-            keystone_data = self.transfrom_matrix(
+            keystone_data = self.transform_matrix(
                 video_resolution_x, video_resolution_y, self.listen_to_UI_interaction(self.init_keystone))
 
             # mirror camera (webcam)
@@ -599,7 +599,7 @@ class Cityscopy:
         np.savetxt(filePath, keystone_data_from_user_interaction)
         print("[!] keystone points were saved in", filePath)
 
-    def transfrom_matrix(self, video_resolution_x, video_resolution_y, keyStonePts):
+    def transform_matrix(self, video_resolution_x, video_resolution_y, keyStonePts):
         '''
         NOTE: Aspect ratio must be flipped
         so that aspectRat[0,1] will be aspectRat[1,0]
@@ -614,10 +614,8 @@ class Cityscopy:
             [video_aspect_ratio[1], video_aspect_ratio[0]]
         ])
         # make the 4 pnts matrix perspective transformation
-        transfromed_matrix = cv2.getPerspectiveTransform(
+        return cv2.getPerspectiveTransform(
             keyStonePts, keystone_origin_points_array)
-
-        return transfromed_matrix
 
     def select_color_by_mean_value(self, mean_color_RGB):
         '''
