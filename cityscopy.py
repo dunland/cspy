@@ -163,8 +163,8 @@ class Cityscopy:
         # get init keystones
         self.init_keystone = self.get_init_keystone()
         # define the table params
-        grid_dimensions_x = self.table_settings['nrows']
-        grid_dimensions_y = self.table_settings['ncols']
+        grid_dimensions_x = self.table_settings['ncols']
+        grid_dimensions_y = self.table_settings['nrows']
         array_of_tags_from_json = self.np_string_tags(
             self.table_settings['tags'])
 
@@ -437,7 +437,7 @@ class Cityscopy:
 
                 # debug print
                 print('\n', 'CityScopy grid sent at:', datetime.now())
-                # print(scan_results)
+                print(scan_results)
 
     def send_json_to_UDP(self, scan_results):
         # defining the udp endpoint

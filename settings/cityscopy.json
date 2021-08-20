@@ -15,9 +15,9 @@
       "2",
       "3"
     ],
-    "nrows": 22,
+    "nrows": 18,
     "ncols": 22,
-    "cell_gap": 5,
+    "cell_gap": 10,
     "camId": 0,
     "realsense": true,
     "interval": 1000,
