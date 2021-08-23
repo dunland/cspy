@@ -117,13 +117,13 @@ class Cityscopy:
                                      1080, rs.format.bgr8, 30)
                 print("trying to stream 1920x1080...", end=" ")
                 self.pipeline.start(config)
-            except Exception as e:
+            except Exception:
                 print("no success.")
                 config.enable_stream(rs.stream.color, 1280,
                                      720, rs.format.bgr8, 30)
                 print("trying to stream 1280x720...", end=" ")
                 self.pipeline.start(config)
-        except:
+        except Exception:
             # setup for USB 2
             print("no success.")
             config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
@@ -157,16 +157,16 @@ class Cityscopy:
         keystone_points_array = np.loadtxt(
             self.get_folder_path() + 'keystone.txt', dtype=np.float32)
 
-        return np.reshape(keystone_points_array, 8)
+        return keystone_points_array
 
     def scanner_function(self, multiprocess_shared_dict):
         # get init keystones
         self.init_keystone = self.get_init_keystone()
+
         # define the table params
         grid_dimensions_x = self.table_settings['ncols']
         grid_dimensions_y = self.table_settings['nrows']
-        array_of_tags_from_json = self.np_string_tags(
-            self.table_settings['tags'])
+        array_of_tags_from_json = [[int(ch) for ch in i] for i in self.table_settings['tags']]
 
         cell_gap = self.table_settings['cell_gap']
 
@@ -183,14 +183,29 @@ class Cityscopy:
         self.using_realsense = self.table_settings['realsense']
 
         # try from a device 1 in list, not default webcam
-        if not self.using_realsense:
-            video_capture = cv2.VideoCapture(camPos)
-        else:
+        if self.using_realsense:
             self.realsense_init()
             # video_capture = self.pipeline
+        else:
+            video_capture = cv2.VideoCapture(camPos)
         time.sleep(1)
 
-        if not self.using_realsense:
+        if self.using_realsense:
+            if grid_dimensions_y < grid_dimensions_x:
+                # get the smaller of two grid ratio x/y or y/x
+                grid_ratio = grid_dimensions_y / grid_dimensions_x
+                video_resolution_x = self.pipeline.wait_for_frames()\
+                    .get_color_frame().get_width()
+                video_resolution_y = self.pipeline.wait_for_frames()\
+                    .get_color_frame().get_height() * grid_ratio
+            else:
+                # get the smaller of two grid ratio x/y or y/x
+                grid_ratio = grid_dimensions_x / grid_dimensions_y
+                video_resolution_x = self.pipeline.wait_for_frames()\
+                    .get_color_frame().get_width() * grid_ratio
+                video_resolution_y = self.pipeline.wait_for_frames()\
+                    .get_color_frame().get_height()
+        else:
             if grid_dimensions_y < grid_dimensions_x:
                 # get the smaller of two grid ratio x/y or y/x
                 grid_ratio = grid_dimensions_y / grid_dimensions_x
@@ -202,33 +217,10 @@ class Cityscopy:
                 video_resolution_x = int(video_capture.get(3) * grid_ratio)
                 video_resolution_y = int(video_capture.get(3))
 
-        else:  # with realsense camera
-            if grid_dimensions_y < grid_dimensions_x:
-                # get the smaller of two grid ratio x/y or y/x
-                grid_ratio = grid_dimensions_y / grid_dimensions_x
-                video_resolution_x = self.pipeline.wait_for_frames().get_color_frame().get_width()
-                video_resolution_y = self.pipeline.wait_for_frames()\
-                    .get_color_frame().get_height() * grid_ratio
-            else:
-                # get the smaller of two grid ratio x/y or y/x
-                grid_ratio = grid_dimensions_x / grid_dimensions_y
-                video_resolution_x = self.pipeline.wait_for_frames()\
-                    .get_color_frame().get_width() * grid_ratio
-                video_resolution_y = self.pipeline.\
-                    wait_for_frames().get_color_frame().get_height()
-
         # define the video window
         cv2.namedWindow('scanner_gui_window', cv2.WINDOW_NORMAL)
         cv2.resizeWindow('scanner_gui_window', 400, 400)
         cv2.moveWindow('scanner_gui_window', 10, 100)
-
-        # call colors dictionary
-        DICTIONARY_COLORS = {
-            # black
-            0: (0, 0, 0),
-            # white
-            1: (255, 255, 255)
-        }
 
         # define the size for each scanner
         x_ratio = int(video_resolution_x / (grid_dimensions_x * 4))
@@ -236,7 +228,7 @@ class Cityscopy:
         scanner_square_size = np.minimum(x_ratio, y_ratio)
 
         # create the location  array of scanners
-        array_of_scanner_points_locations = self.get_scanner_pixel_coordinates(
+        array_of_scanner_points = self.get_scanner_pixel_coordinates(
             grid_dimensions_x, grid_dimensions_y, cell_gap, video_resolution_x,
             video_resolution_y, scanner_square_size)
 
@@ -249,6 +241,7 @@ class Cityscopy:
             if self.using_realsense:
                 frames = self.pipeline.wait_for_frames()  # returns composite_frame
                 color_frame = frames.get_color_frame()  # returns video_frame
+                color_frame = np.asanyarray(color_frame.get_data())
             else:
                 # read video frames
                 RET, color_frame = video_capture.read()
@@ -258,31 +251,21 @@ class Cityscopy:
 
             # get a new matrix transformation every frame
             keystone_data = self.transform_matrix(
-                video_resolution_x, video_resolution_y, self.listen_to_UI_interaction(self.init_keystone))
+                video_resolution_x, video_resolution_y, self.listen_to_UI_interaction())
 
             # mirror camera (webcam)
             if self.table_settings['mirror_cam']:
-                if not self.using_realsense and RET:
+                if self.using_realsense:
+                    color_frame = np.flip(color_frame, 1)
+                elif RET:
                     color_frame = cv2.flip(color_frame, 1)
 
-            if self.using_realsense:
-                color_frame = np.asanyarray(color_frame.get_data())
-                # mirror camera (realsense)
-                if self.table_settings['mirror_cam']:
-                    color_frame = np.flip(color_frame, 1)
-
             # warp the video based on keystone info
-            video_resolution_x = int(video_resolution_x)  # convert to int. will cause an error in cv2.warpPerspective() otherwise.
-            video_resolution_y = int(video_resolution_y)
             keystoned_video = cv2.warpPerspective(
-                color_frame, keystone_data, (video_resolution_x, video_resolution_y))
+                color_frame, keystone_data, (int(video_resolution_x), int(video_resolution_y)))
 
             # run through locations list and make scanners
-            for this_scanner_location in array_of_scanner_points_locations:
-                # set x and y from locations array
-                x = this_scanner_location[0]
-                y = this_scanner_location[1]
-
+            for x, y in array_of_scanner_points:
                 # use this to control reduction of scanner size
                 this_scanner_max_dimension = int(scanner_square_size)
                 scanner_reduction = int(scanner_square_size / 4)
@@ -299,20 +282,18 @@ class Cityscopy:
                 mean_color = cv2.mean(this_scanner_size)
 
                 # convert colors to rgb
-                color_b, color_g, color_r, _ = np.uint8(mean_color)
-                mean_color_RGB = np.uint8([[[color_b, color_g, color_r]]])
+                mean_color_RGB = np.uint8([[np.uint8(mean_color)[:3]]])
 
                 # select the right color based on sample
-                scannerCol = self.select_color_by_mean_value(
-                    mean_color_RGB)
+                scannerCol = self.select_color_by_mean_value(mean_color_RGB)
 
                 # add colors to array for type analysis
                 CELL_COLORS_ARRAY.append(scannerCol)
 
                 # get color from dict
-                thisColor = DICTIONARY_COLORS[scannerCol]
+                thisColor = [(0, 0, 0), (255, 255, 255)][scannerCol]
 
-                # ? only draw vis if settings has 1 in gui
+                # only draw vis if settings has 1 in gui
                 if self.table_settings['gui']:
                     # draw rects with frame colored by range result
                     cv2.rectangle(keystoned_video,
@@ -351,19 +332,20 @@ class Cityscopy:
         if self.selected_corner is not None:
             case = {
                 '1': [(0, 0), mid],
-                '2':  [(x, 0), mid],
-                '3':  [(0, y), mid],
-                '4':  [(x, y), mid],
+                '2': [(x, 0), mid],
+                '3': [(0, y), mid],
+                '4': [(x, y), mid],
             }
 
             # print(type(self.selected_corner))
-            col = (0, 0, 255) if self.magnitude == 1 else (255,0,0)
+            col = (0, 0, 255) if self.magnitude == 1 else (255, 0, 0)
             cv2.arrowedLine(
                 vid, case[self.selected_corner][0],
                 case[self.selected_corner][1],
                 col, 2)
 
-    def get_scanner_pixel_coordinates(self, grid_dimensions_x, grid_dimensions_y, cell_gap, video_res_x, video_res_y, scanner_square_size):
+    def get_scanner_pixel_coordinates(self, grid_dimensions_x, grid_dimensions_y, cell_gap,
+                                      video_res_x, video_res_y, scanner_square_size):
         """Creates list of pixel coordinates for scanner.
 
         Steps:
@@ -378,14 +360,11 @@ class Cityscopy:
 
         Returns list of[x, y] pixel coordinates for scanner to read.
         """
-
         # calc the half of the ratio between
         # screen size and the x dim of the grid
         # to center the grid in both Y & X
-        grid_x_offset = int(0.5 *
-                            (video_res_x - grid_dimensions_x * scanner_square_size * 4))
-        grid_y_offset = int(0.5 *
-                            (video_res_y - grid_dimensions_y * scanner_square_size * 4))
+        grid_x_offset = int(0.5 * (video_res_x - grid_dimensions_x * scanner_square_size * 4))
+        grid_y_offset = int(0.5 * (video_res_y - grid_dimensions_y * scanner_square_size * 4))
 
         # create the list of points
         pixel_coordinates_list = []
@@ -408,13 +387,8 @@ class Cityscopy:
         # print(pixel_coordinates_list)
         return pixel_coordinates_list
 
-    def np_string_tags(self, json_data):
-        # return each item for this field
-        return [np.array([int(ch) for ch in i]) for i in json_data]
-
     # 2nd proccess to
     def create_data_json(self, multiprocess_shared_dict):
-        self.table_settings = self.parse_json_file('cityscopy')
         SEND_INTERVAL = self.table_settings['interval']
         # initial dummy value for old grid
         old_scan_results = [-1]
@@ -425,7 +399,8 @@ class Cityscopy:
             scan_results = multiprocess_shared_dict['scan']
             from_last_sent = datetime.now() - last_sent
 
-            if scan_results and scan_results != old_scan_results and from_last_sent > SEND_INTERVAL:
+            if scan_results and scan_results != old_scan_results and \
+                    from_last_sent > SEND_INTERVAL:
                 try:
                     # send as string via UDP:
                     self.send_json_to_UDP(scan_results)
@@ -477,7 +452,7 @@ class Cityscopy:
         return str(os.path.realpath(
             os.path.join(os.getcwd(), os.path.dirname(__file__)))) + '/'
 
-    def listen_to_UI_interaction(self, init_keystone):
+    def listen_to_UI_interaction(self):
         """
         listens to user interaction.
 
@@ -506,50 +481,49 @@ class Cityscopy:
         elif self.selected_corner is not None and key in move_keys:
             if self.selected_corner == '1':
                 if key == 'd':
-                    init_keystone[0] -= self.magnitude
+                    self.init_keystone[0][0] -= self.magnitude
                 elif key == 'a':
-                    init_keystone[0] += self.magnitude
+                    self.init_keystone[0][0] += self.magnitude
                 elif key == 'w':
-                    init_keystone[1] += self.magnitude
+                    self.init_keystone[0][1] += self.magnitude
                 elif key == 's':
-                    init_keystone[1] -= self.magnitude
+                    self.init_keystone[0][1] -= self.magnitude
 
             elif self.selected_corner == '2':
                 if key == 'd':
-                    init_keystone[2] -= self.magnitude
+                    self.init_keystone[1][0] -= self.magnitude
                 elif key == 'a':
-                    init_keystone[2] += self.magnitude
+                    self.init_keystone[1][0] += self.magnitude
                 elif key == 'w':
-                    init_keystone[3] += self.magnitude
+                    self.init_keystone[1][1] += self.magnitude
                 elif key == 's':
-                    init_keystone[3] -= self.magnitude
+                    self.init_keystone[1][1] -= self.magnitude
 
             elif self.selected_corner == '3':
                 if key == 'd':
-                    init_keystone[4] -= self.magnitude
+                    self.init_keystone[2][0] -= self.magnitude
                 elif key == 'a':
-                    init_keystone[4] += self.magnitude
+                    self.init_keystone[2][0] += self.magnitude
                 elif key == 'w':
-                    init_keystone[5] += self.magnitude
+                    self.init_keystone[2][1] += self.magnitude
                 elif key == 's':
-                    init_keystone[5] -= self.magnitude
+                    self.init_keystone[2][1] -= self.magnitude
 
             elif self.selected_corner == '4':
                 if key == 'd':
-                    init_keystone[6] -= self.magnitude
+                    self.init_keystone[3][0] -= self.magnitude
                 elif key == 'a':
-                    init_keystone[6] += self.magnitude
+                    self.init_keystone[3][0] += self.magnitude
                 elif key == 'w':
-                    init_keystone[7] += self.magnitude
+                    self.init_keystone[3][1] += self.magnitude
                 elif key == 's':
-                    init_keystone[7] -= self.magnitude
+                    self.init_keystone[3][1] -= self.magnitude
 
         #  saves to file
         elif key == 'k':
             # reset selected corner
             self.selected_corner = None
-            self.save_keystone_to_file(
-                self.listen_to_UI_interaction(init_keystone))
+            self.save_keystone_to_file(self.init_keystone)
 
         # realsense exposure control
         if self.using_realsense:
@@ -576,17 +550,17 @@ class Cityscopy:
                     if gain > 1:
                         self.device.set_option(rs.option.gain, gain - gain/10)
 
-                print("exposure:", self.device.get_option(rs.option.exposure),\
+                print("exposure:", self.device.get_option(rs.option.exposure),
                       "gain:", self.device.get_option(rs.option.gain))
 
             # reset realsense values to standard:
             if key == ' ':
                 self.device.set_option(rs.option.gain, 64)
                 self.device.set_option(rs.option.exposure, 166)
-                print("exposure:", self.device.get_option(rs.option.exposure),\
+                print("exposure:", self.device.get_option(rs.option.exposure),
                       "gain:", self.device.get_option(rs.option.gain))
 
-        return np.reshape(init_keystone, (4, 2))
+        return self.init_keystone
 
     def save_keystone_to_file(self, keystone_data_from_user_interaction):
         """
@@ -646,7 +620,7 @@ class Cityscopy:
             result_tag = self.brick_rotation_check(
                 this_16_bits, tagsArray)
             # if no results were found
-            if result_tag == None:
+            if result_tag is None:
                 result_tag = [-1, -1]
             # add a list of results to the array
             scan_results_array.append(result_tag)
@@ -672,18 +646,16 @@ class Cityscopy:
             if np.array_equal(brk_4x4_180, this_tag):
                 return [tags_array_counter, 2]
             # rotate once
-            brk_4x4_90 = np.reshape(
-                np.rot90(np.rot90(np.rot90(brk_4x4))), 16)
+            brk_4x4_90 = np.reshape(np.rot90(np.rot90(np.rot90(brk_4x4))), 16)
             if np.array_equal(brk_4x4_90, this_tag):
                 return [tags_array_counter, 3]
             else:
-                # if no rotation was found go to next tag
-                # in tag list
+                # if no rotation was found go to next tag in tag list
                 tags_array_counter += 1
 
     def keystone(self):
         # file path to save
-        self.KEYSTONE_PATH = self.get_folder_path() + '/keystone.txt'
+        self.KEYSTONE_PATH = self.get_folder_path() + 'keystone.txt'
         print('keystone path:', self.KEYSTONE_PATH)
 
         # serial num of camera, to switch between cameras
