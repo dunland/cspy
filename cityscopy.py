@@ -76,6 +76,13 @@ class Cityscopy:
         self.selected_corner = None
         self.magnitude = 1
 
+        # realsense camera parameters
+        self.exposure = 100
+        self.gain = 1
+
+        # color conversion threshold
+        self.color_conversion_threshold = 125
+
         # init keystone variables
         self.FRAME = None
         self.POINT_INDEX = None
@@ -318,6 +325,11 @@ class Cityscopy:
                 # draw arrow to interaction area
                 self.ui_selected_corner(
                     video_resolution_x, video_resolution_y, keystoned_video)
+                cv2.putText(keystoned_video, "magnitude: " + str(self.magnitude) + " [SPACE]", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255,255,255), 1, cv2.LINE_AA)
+                cv2.putText(keystoned_video, "exposure: " + str(self.exposure) + " [e/r]", (50, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255,255,255), 1, cv2.LINE_AA)
+                cv2.putText(keystoned_video, "gain: " + str(self.gain) + " [g/h]", (50, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255,255,255), 1, cv2.LINE_AA)
+                cv2.putText(keystoned_video, "color_conversion_threshold: " + str(self.color_conversion_threshold) + " [+/-]", (50, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255,255,255), 1, cv2.LINE_AA)
+
                 # draw the video to screen
                 cv2.imshow("scanner_gui_window", keystoned_video)
 
@@ -467,13 +479,22 @@ class Cityscopy:
         corner_keys = ['1', '2', '3', '4']
         move_keys = ['w', 'a', 's', 'd']
         realsense_keys = ['e', 'r', 'g', 'h']
+        bgr_threshold_keys = ['+', '-']
 
         KEY_STROKE = cv2.waitKey(1)
         key = chr(KEY_STROKE & 255)
 
-        if key == '\t':
+        if key == ' ':
             self.magnitude = 10 if self.magnitude == 1 else 1
             print("MAGNITUDE", self.magnitude)
+
+        elif key in bgr_threshold_keys:
+            if key == '+':
+                self.color_conversion_threshold += self.magnitude
+                print("color to greyscale at ", self.color_conversion_threshold)
+            elif key == '-':
+                self.color_conversion_threshold -= self.magnitude
+                print("color to greyscale at ", self.color_conversion_threshold)
 
         elif key in corner_keys:
             self.selected_corner = key
@@ -530,25 +551,25 @@ class Cityscopy:
             if key in realsense_keys:
                 # increase exposure
                 if key == 'e':
-                    exposure = self.device.get_option(rs.option.exposure)
-                    self.device.set_option(rs.option.exposure, exposure + int(exposure/10))
+                    self.exposure = self.device.get_option(rs.option.exposure)
+                    self.device.set_option(rs.option.exposure, self.exposure + int(self.exposure/10))
 
                 # decrease exposure
                 elif key == 'r':
-                    exposure = self.device.get_option(rs.option.exposure)
-                    if exposure > 1:
-                        self.device.set_option(rs.option.exposure, exposure - exposure/10)
+                    self.exposure = self.device.get_option(rs.option.exposure)
+                    if self.exposure > 1:
+                        self.device.set_option(rs.option.exposure, self.exposure - self.exposure/10)
 
                 # increase gain
                 elif key == 'g':
-                    gain = self.device.get_option(rs.option.gain)
-                    self.device.set_option(rs.option.gain, gain + int(gain/10))
+                    self.gain = self.device.get_option(rs.option.self.gain)
+                    self.device.set_option(rs.option.gain, self.gain + int(self.gain/10))
 
                 # decrease gain
                 elif key == 'h':
-                    gain = self.device.get_option(rs.option.gain)
+                    self.gain = self.device.get_option(rs.option.gain)
                     if gain > 1:
-                        self.device.set_option(rs.option.gain, gain - gain/10)
+                        self.device.set_option(rs.option.gain, self.gain - self.gain/10)
 
                 print("exposure:", self.device.get_option(rs.option.exposure),
                       "gain:", self.device.get_option(rs.option.gain))
@@ -592,11 +613,12 @@ class Cityscopy:
             keyStonePts, keystone_origin_points_array)
 
     def select_color_by_mean_value(self, mean_color_RGB):
+        self.color_conversion_threshold
         '''
         convert color to hsv for oclidian distance
         '''
         bgr_to_grayscale = cv2.cvtColor(mean_color_RGB, cv2.COLOR_BGR2GRAY)
-        return 0 if int(bgr_to_grayscale) < 125 else 1
+        return 0 if int(bgr_to_grayscale) < self.color_conversion_threshold else 1
 
     def find_type_in_tags_array(self, cellColorsArray, tagsArray,
                                 grid_dimensions_x, grid_dimensions_y):
