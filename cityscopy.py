@@ -69,7 +69,7 @@ class Cityscopy:
         # load info from json file
         self.SETTINGS_PATH = path
         # get the table settings. This is used bu many metohds
-        self.table_settings = self.parse_json_file('cityscopy')
+        self.table_settings = json.load(open("settings/cityscopy.json"))
         print('getting settings for CityScopy...')
 
         # init corners variables
@@ -77,11 +77,11 @@ class Cityscopy:
         self.magnitude = 1
 
         # realsense camera parameters
-        self.exposure = 100
-        self.gain = 1
+        self.exposure = self.table_settings['realsense']['exposure']
+        self.gain = self.table_settings['realsense']['gain']
 
         # color conversion threshold
-        self.color_conversion_threshold = 125
+        self.color_conversion_threshold = self.table_settings['color_conversion_threshold']
 
         # init keystone variables
         self.FRAME = None
@@ -113,8 +113,8 @@ class Cityscopy:
         print("using Intel Realsense", device_product_line)
 
         self.device = pipeline_profile.get_device().first_color_sensor()
-        self.device.set_option(rs.option.exposure, 166)
-        self.device.set_option(rs.option.gain, 64)
+        self.device.set_option(rs.option.exposure, self.exposure)
+        self.device.set_option(rs.option.gain, self.gain)
 
         # Start streaming
         try:
@@ -436,26 +436,6 @@ class Cityscopy:
         except Exception as e:
             print(e)
 
-    def parse_json_file(self, field):
-        """
-        get data from JSON settings files.
-
-        Steps:
-        - opens file
-        - checks if field has objects longer than one char [such as the 'tags' field]
-        - if so, converts them to numpy arrays
-
-        Args:
-
-        Returns the desired filed
-        """
-        # init array for json fields
-        settings_file = self.get_folder_path() + self.SETTINGS_PATH
-        # open json file
-        with open(settings_file) as d:
-            data = json.load(d)
-        return data[field]
-
     def get_folder_path(self):
         """
         gets the local folder
@@ -545,6 +525,11 @@ class Cityscopy:
             # reset selected corner
             self.selected_corner = None
             self.save_keystone_to_file(self.init_keystone)
+            self.table_settings['realsense']['exposure'] = self.exposure
+            self.table_settings['realsense']['gain'] = self.gain
+            self.table_settings['color_conversion_threshold'] = self.color_conversion_threshold
+            with open('settings/cityscopy.json', 'w') as output_file:
+                json.dump(self.table_settings, output_file)
 
         # realsense exposure control
         if self.using_realsense:
@@ -562,13 +547,13 @@ class Cityscopy:
 
                 # increase gain
                 elif key == 'g':
-                    self.gain = self.device.get_option(rs.option.self.gain)
+                    self.gain = self.device.get_option(rs.option.gain)
                     self.device.set_option(rs.option.gain, self.gain + int(self.gain/10))
 
                 # decrease gain
                 elif key == 'h':
                     self.gain = self.device.get_option(rs.option.gain)
-                    if gain > 1:
+                    if self.gain > 1:
                         self.device.set_option(rs.option.gain, self.gain - self.gain/10)
 
                 print("exposure:", self.device.get_option(rs.option.exposure),
