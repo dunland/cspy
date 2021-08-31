@@ -79,6 +79,7 @@ class Cityscopy:
         # realsense camera parameters
         self.exposure = self.table_settings['realsense']['exposure']
         self.gain = self.table_settings['realsense']['gain']
+        self.using_realsense = self.table_settings['realsense']['active']
 
         # color conversion threshold
         self.color_conversion_threshold = self.table_settings['color_conversion_threshold']
@@ -185,9 +186,6 @@ class Cityscopy:
 
         # serial num of camera, to switch between cameras
         camPos = self.table_settings['camId']
-
-        # check if using intel realsense camera or not
-        self.using_realsense = self.table_settings['realsense']
 
         # try from a device 1 in list, not default webcam
         if self.using_realsense:
@@ -301,11 +299,11 @@ class Cityscopy:
                 thisColor = [(0, 0, 0), (255, 255, 255)][scannerCol]
 
                 # only draw vis if settings has 1 in gui
-                if self.table_settings['gui']:
-                    # draw rects with frame colored by range result
-                    cv2.rectangle(keystoned_video,
-                                  (x + scanner_reduction, y + scanner_reduction),
-                                  (x_red, y_red), thisColor, 1)
+                 if self.table_settings['gui']:
+                     # draw rects with frame colored by range result
+                     cv2.rectangle(keystoned_video,
+                                   (x + scanner_reduction, y + scanner_reduction),
+                                   (x_red, y_red), thisColor, 1)
 
             # reduce unnecessary scan analysis and sending by comparing
             # the list of scanned cells to an old one
@@ -667,7 +665,7 @@ class Cityscopy:
 
         # serial num of camera, to switch between cameras
         camPos = self.table_settings['camId']
-        self.using_realsense = self.table_settings['realsense']
+        self.using_realsense = self.table_settings['realsense']['active']
 
         # try from a device 1 in list, not default webcam
         if not self.using_realsense:
