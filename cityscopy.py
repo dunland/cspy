@@ -299,7 +299,7 @@ class Cityscopy:
                 thisColor = [(0, 0, 0), (255, 255, 255)][scannerCol]
 
                 # only draw vis if settings has 1 in gui
-                 if self.table_settings['gui']:
+                if self.table_settings['gui']:
                      # draw rects with frame colored by range result
                      cv2.rectangle(keystoned_video,
                                    (x + scanner_reduction, y + scanner_reduction),
