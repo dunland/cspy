@@ -425,12 +425,16 @@ class Cityscopy:
                 print(scan_results)
 
     def send_json_to_UDP(self, scan_results):
+        json_dict = {'grid' : scan_results, 'slider' : 0.5}
+        json_string = json.dumps(json_dict)
+
         # defining the udp endpoint
         UDP_IP = "127.0.0.1"
         UDP_PORT = 5000
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try:
-            sock.sendto(str(scan_results).encode('utf-8'), (UDP_IP, UDP_PORT))
+            # sock.sendto(str(scan_results).encode('utf-8'), (UDP_IP, UDP_PORT))
+            sock.sendto(json_string.encode('utf-8'), (UDP_IP, UDP_PORT))
         except Exception as e:
             print(e)
 
@@ -554,13 +558,6 @@ class Cityscopy:
                     if self.gain > 1:
                         self.device.set_option(rs.option.gain, self.gain - self.gain/10)
 
-                print("exposure:", self.device.get_option(rs.option.exposure),
-                      "gain:", self.device.get_option(rs.option.gain))
-
-            # reset realsense values to standard:
-            if key == ' ':
-                self.device.set_option(rs.option.gain, 64)
-                self.device.set_option(rs.option.exposure, 166)
                 print("exposure:", self.device.get_option(rs.option.exposure),
                       "gain:", self.device.get_option(rs.option.gain))
 
