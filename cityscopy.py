@@ -58,8 +58,9 @@ import json
 import os
 import socket
 from multiprocessing import Process, Manager
-import pyrealsense2 as rs
 
+if json.load(open("settings/cityscopy.json"))['realsense']['active']:
+    import pyrealsense2 as rs
 
 class Cityscopy:
     '''scanner for CityScope'''
