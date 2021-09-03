@@ -154,12 +154,43 @@ class Cityscopy:
         # defines a multiprocess for sending the data
         self.process_send_packet = Process(target=self.create_data_json,
                                            args=([self.multiprocess_shared_dict]))
+        self.slider = Process(target=self.slider_function, args=([self.multiprocess_shared_dict]))
+
         # start porcess
         self.process_send_packet.start()
+        self.slider.start()
+
         # start camera on main thread due to multiprocces issue
         self.scanner_function(self.multiprocess_shared_dict)
         # join the two processes
         self.process_send_packet.join()
+
+    def slider_function(self, multiprocess_shared_dict):
+
+        SEND_INTERVAL = 100
+        # initial dummy value for old grid
+        old_scan_results = [-1]
+        SEND_INTERVAL = timedelta(milliseconds=SEND_INTERVAL)
+        last_observed = datetime.now()
+
+        while True:
+            scan_results = multiprocess_shared_dict['scan']
+            from_last_observed = datetime.now() - last_observed
+
+            if scan_results and scan_results != old_scan_results and \
+                    from_last_observed > SEND_INTERVAL:
+                try:
+                    # observe slider cells:
+                    for i in range(self.table_settings['ncols'], 0, -1):
+                        if scan_results[i] != [0, 0]:
+                            self.multiprocess_shared_dict['slider'] = 100/self.table_settings['ncols']*i
+                            break
+
+                except Exception as ERR:
+                    print(ERR)
+                # match the two grid after send
+                old_scan_results = scan_results
+                last_observed = datetime.now()
 
     def get_init_keystone(self):
         # load the initial keystone data from file
@@ -329,8 +360,8 @@ class Cityscopy:
                 cv2.putText(keystoned_video, "gain: " + str(self.gain) + " [g/h]", (50, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255,255,255), 1, cv2.LINE_AA)
                 cv2.putText(keystoned_video, "color_conversion_threshold: " + str(self.color_conversion_threshold) + " [+/-]", (50, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255,255,255), 1, cv2.LINE_AA)
 
-                # draw the video to screen
-                cv2.imshow("scanner_gui_window", keystoned_video)
+            # draw the video to screen
+            cv2.imshow("scanner_gui_window", keystoned_video)
 
         # close opencv
         video_capture.release()
@@ -423,10 +454,11 @@ class Cityscopy:
 
                 # debug print
                 print('\n', 'CityScopy grid sent at:', datetime.now())
-                print(scan_results)
+                # print(scan_results)
 
     def send_json_to_UDP(self, scan_results):
-        json_dict = {'grid' : scan_results, 'slider' : 0.5}
+        slider_val = self.multiprocess_shared_dict['slider']
+        json_dict = {'grid' : scan_results, 'slider' : slider_val}
         json_string = json.dumps(json_dict)
 
         # defining the udp endpoint
@@ -540,27 +572,30 @@ class Cityscopy:
                 # increase exposure
                 if key == 'e':
                     self.exposure = self.device.get_option(rs.option.exposure)
-                    self.device.set_option(rs.option.exposure, self.exposure + int(self.exposure/10))
+                    self.device.set_option(rs.option.exposure, self.exposure + self.magnitude)
 
                 # decrease exposure
                 elif key == 'r':
                     self.exposure = self.device.get_option(rs.option.exposure)
                     if self.exposure > 1:
-                        self.device.set_option(rs.option.exposure, self.exposure - self.exposure/10)
+                        self.device.set_option(rs.option.exposure, self.exposure - self.magnitude)
 
                 # increase gain
                 elif key == 'g':
                     self.gain = self.device.get_option(rs.option.gain)
-                    self.device.set_option(rs.option.gain, self.gain + int(self.gain/10))
+                    self.device.set_option(rs.option.gain, self.gain + self.magnitude)
 
                 # decrease gain
                 elif key == 'h':
                     self.gain = self.device.get_option(rs.option.gain)
                     if self.gain > 1:
-                        self.device.set_option(rs.option.gain, self.gain - self.gain/10)
+                        self.device.set_option(rs.option.gain, self.gain - self.magnitude)
 
                 print("exposure:", self.device.get_option(rs.option.exposure),
                       "gain:", self.device.get_option(rs.option.gain))
+
+            elif key == 'u':
+                self.table_settings['gui'] = not self.table_settings['gui']
 
         return self.init_keystone
 
