@@ -62,6 +62,9 @@ from multiprocessing import Process, Manager
 if json.load(open("settings/cityscopy.json"))['realsense']['active']:
     import pyrealsense2 as rs
 
+BLACK = (0, 0, 0)
+WHITE = (255, 255, 255)
+
 
 class Cityscopy:
     '''scanner for CityScope'''
@@ -83,8 +86,11 @@ class Cityscopy:
         self.gain = self.table_settings['realsense']['gain']
         self.using_realsense = self.table_settings['realsense']['active']
 
-        # color conversion threshold
-        self.color_conversion_threshold = self.table_settings['color_conversion_threshold']
+        # color conversion thresholds
+        self.max_l = self.table_settings.get('max_l', 127)
+        self.max_a = self.table_settings.get('max_a', 255)
+        self.max_b = self.table_settings.get('max_b', 255)
+        self.quantile = self.table_settings.get('quantile', 0.5)
 
         # init keystone variables
         self.FRAME = None
@@ -171,13 +177,7 @@ class Cityscopy:
         grid_dim = (int(self.table_settings['ncols']),
                     int(self.table_settings['nrows']))
 
-        array_of_tags_from_json = [[int(ch) for ch in i] for i in self.table_settings['tags']]
-
-        # init type list array
-        TYPES_LIST = []
-
-        # holder of old cell colors array to check for new scan
-        OLD_CELL_COLORS_ARRAY = []
+        array_of_tags_from_json = [[int(ch) for ch in tag] for tag in self.table_settings['tags']]
 
         # serial num of camera, to switch between cameras
         camPos = self.table_settings['cam_id']
@@ -196,8 +196,7 @@ class Cityscopy:
             video_res = (int(video_capture.get(3)), int(video_capture.get(4)))
 
         # define the video window
-        cv2.namedWindow('scanner_gui_window', cv2.WINDOW_NORMAL)
-        cv2.resizeWindow('scanner_gui_window', video_res[0], video_res[1])
+        cv2.namedWindow('scanner_gui_window', cv2.WINDOW_AUTOSIZE)
 
         # define the size for each scanner
         block_size = (video_res[0] / grid_dim[0], video_res[1] / grid_dim[1])
@@ -210,6 +209,8 @@ class Cityscopy:
             for j in range(4 * grid_dim[1])
         ]
 
+        previous_colors = []
+
         # run the video loop forever
         while True:
             if self.using_realsense:
@@ -220,8 +221,7 @@ class Cityscopy:
                 # read video frames
                 _, color_frame = video_capture.read()
 
-            # zero an array to collect the scanners
-            CELL_COLORS_ARRAY = []
+            current_colors = []
 
             # get a new matrix transformation every frame
             keystone_data = self.transform_matrix(video_res, self.listen_to_UI_interaction())
@@ -236,71 +236,67 @@ class Cityscopy:
             # warp the video based on keystone info
             keystoned_video = cv2.warpPerspective(color_frame, keystone_data, video_res)
 
-            # visualize grid
+            # convert input to LAB colour space
+            lab_image = cv2.cvtColor(keystoned_video, cv2.COLOR_BGR2LAB)
+
+            # get L/a/b channels
+            ch_l, ch_a, ch_b = cv2.split(lab_image)
+
+            # reduce the colors based on a threshold
+            binary_image = np.where(
+                (ch_l <= self.max_l) & (ch_a <= self.max_a) & (ch_b <= self.max_b), 0, 255
+                ).astype(np.uint8)
+
+            # run through coordinates and analyse each image
+            for x, y in scanner_points:
+                # get image slice for scanning
+                scan_pixels = binary_image[y:int(y + codepoint_size[1]),
+                                           x:int(x + codepoint_size[0])]
+
+                # determine color based on the distribution of B/W values in the image
+                detected_color = BLACK if np.quantile(scan_pixels, self.quantile) == 0 else WHITE
+
+                current_colors.append(0 if detected_color == BLACK else 1)
+
+            # reduce unnecessary scan analysis and sending by comparing
+            # the list of scanned cells to the previous one
+            if current_colors != previous_colors:
+                # Find the type and store results in mp_shared_dict
+                mp_shared_dict['scan'] = self.identify_tags(
+                    current_colors, array_of_tags_from_json, grid_dim)
+                previous_colors = current_colors
+
             if self.table_settings['gui']:
+                # visualize grid
                 for x in range(grid_dim[0]):
                     for y in range(grid_dim[1]):
                         cv2.rectangle(
                             keystoned_video,
                             (int(x * block_size[0]), int(y * block_size[1])),
                             (int((x + 1) * block_size[0]), int((y + 1) * block_size[1])),
-                            (255, 255, 255), 1)
+                            WHITE, 1)
 
-            # run through coordinates and analyse each image
-            for x, y in scanner_points:
-                # get image slice for scanning
-                scan_pixels = keystoned_video[y:int(y + codepoint_size[1]),
-                                              x:int(x + codepoint_size[0])]
-
-                # draw rects with mean value of color
-                mean_color = cv2.mean(scan_pixels)
-
-                # convert colors to rgb
-                mean_color_RGB = np.uint8([[np.uint8(mean_color)[:3]]])
-
-                # select the right color based on sample
-                scannerCol = self.select_color_by_mean_value(mean_color_RGB)
-
-                # add colors to array for type analysis
-                CELL_COLORS_ARRAY.append(scannerCol)
-
-                if self.table_settings['gui']:
-                    # draw dots colored by result
+                # draw dots with detected color
+                for (x, y), value in zip(scanner_points, current_colors):
                     center = (int(x + codepoint_size[0] / 2), int(y + codepoint_size[1] / 2))
-                    cv2.circle(keystoned_video, center, 1,
-                               [(0, 0, 0), (255, 255, 255)][scannerCol], 2)
+                    cv2.circle(keystoned_video, center, 2, WHITE if value else BLACK, -1)
 
-            # reduce unnecessary scan analysis and sending by comparing
-            # the list of scanned cells to an old one
-            if CELL_COLORS_ARRAY != OLD_CELL_COLORS_ARRAY:
-                # send array to method for checking types
-                TYPES_LIST = self.find_type_in_tags_array(
-                    CELL_COLORS_ARRAY, array_of_tags_from_json, grid_dim)
-
-                # match the two
-                OLD_CELL_COLORS_ARRAY = CELL_COLORS_ARRAY
-
-                # [!] Store the type list results in the mp_shared_dict
-                mp_shared_dict['scan'] = TYPES_LIST
-
-            if self.table_settings['gui']:
                 # draw arrow to interaction area
                 self.ui_selected_corner(video_res[0], video_res[1], keystoned_video)
                 cv2.putText(keystoned_video, "magnitude: " + str(self.magnitude) + " [SPACE]",
-                            (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 1,
+                            (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1,
                             cv2.LINE_AA)
                 cv2.putText(keystoned_video, "exposure: " + str(self.exposure) + " [e/r]",
-                            (50, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 1,
+                            (50, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1,
                             cv2.LINE_AA)
                 cv2.putText(keystoned_video, "gain: " + str(self.gain) + " [g/h]",
-                            (50, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 1,
+                            (50, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1,
                             cv2.LINE_AA)
-                cv2.putText(keystoned_video, "color_conversion_threshold: " +
-                            str(self.color_conversion_threshold) + " [+/-]",
-                            (50, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 1,
-                            cv2.LINE_AA)
+                # cv2.putText(keystoned_video, "color_conversion_threshold: " +
+                #             str(self.color_conversion_threshold) + " [+/-]",
+                #             (50, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1,
+                #             cv2.LINE_AA)
 
-                # draw the video to screen
                 cv2.imshow("scanner_gui_window", keystoned_video)
 
         # close opencv
@@ -384,7 +380,7 @@ class Cityscopy:
         corner_keys = ['1', '2', '3', '4']
         move_keys = ['w', 'a', 's', 'd']
         realsense_keys = ['e', 'r', 'g', 'h']
-        bgr_threshold_keys = ['+', '-']
+        # bgr_threshold_keys = ['+', '-']
 
         key = chr(cv2.waitKey(1) & 255)
 
@@ -392,13 +388,13 @@ class Cityscopy:
             self.magnitude = 10 if self.magnitude == 1 else 1
             print("MAGNITUDE", self.magnitude)
 
-        elif key in bgr_threshold_keys:
-            if key == '+':
-                self.color_conversion_threshold += self.magnitude
-                print("color to greyscale at ", self.color_conversion_threshold)
-            elif key == '-':
-                self.color_conversion_threshold -= self.magnitude
-                print("color to greyscale at ", self.color_conversion_threshold)
+        # elif key in bgr_threshold_keys:
+        #     if key == '+':
+        #         self.color_conversion_threshold += self.magnitude
+        #         print("color to greyscale at ", self.color_conversion_threshold)
+        #     elif key == '-':
+        #         self.color_conversion_threshold -= self.magnitude
+        #         print("color to greyscale at ", self.color_conversion_threshold)
 
         elif key in corner_keys:
             self.selected_corner = key
@@ -451,37 +447,36 @@ class Cityscopy:
             self.save_keystone_to_file(self.init_keystone)
             self.table_settings['realsense']['exposure'] = self.exposure
             self.table_settings['realsense']['gain'] = self.gain
-            self.table_settings['color_conversion_threshold'] = self.color_conversion_threshold
+            # self.table_settings['color_conversion_threshold'] = self.color_conversion_threshold
             with open('settings/cityscopy.json', 'w') as output_file:
                 json.dump(self.table_settings, output_file)
 
         # realsense exposure control
-        if self.using_realsense:
-            if key in realsense_keys:
-                # increase exposure
-                if key == 'e':
-                    self.exposure = self.device.get_option(rs.option.exposure)
-                    self.device.set_option(rs.option.exposure, self.exposure + int(self.exposure/10))
+        if self.using_realsense and key in realsense_keys:
+            # increase exposure
+            if key == 'e':
+                self.exposure = self.device.get_option(rs.option.exposure)
+                self.device.set_option(rs.option.exposure, self.exposure + int(self.exposure/10))
 
-                # decrease exposure
-                elif key == 'r':
-                    self.exposure = self.device.get_option(rs.option.exposure)
-                    if self.exposure > 1:
-                        self.device.set_option(rs.option.exposure, self.exposure - self.exposure/10)
+            # decrease exposure
+            elif key == 'r':
+                self.exposure = self.device.get_option(rs.option.exposure)
+                if self.exposure > 1:
+                    self.device.set_option(rs.option.exposure, self.exposure - self.exposure/10)
 
-                # increase gain
-                elif key == 'g':
-                    self.gain = self.device.get_option(rs.option.gain)
-                    self.device.set_option(rs.option.gain, self.gain + int(self.gain/10))
+            # increase gain
+            elif key == 'g':
+                self.gain = self.device.get_option(rs.option.gain)
+                self.device.set_option(rs.option.gain, self.gain + int(self.gain/10))
 
-                # decrease gain
-                elif key == 'h':
-                    self.gain = self.device.get_option(rs.option.gain)
-                    if self.gain > 1:
-                        self.device.set_option(rs.option.gain, self.gain - self.gain/10)
+            # decrease gain
+            elif key == 'h':
+                self.gain = self.device.get_option(rs.option.gain)
+                if self.gain > 1:
+                    self.device.set_option(rs.option.gain, self.gain - self.gain/10)
 
-                print("exposure:", self.device.get_option(rs.option.exposure),
-                      "gain:", self.device.get_option(rs.option.gain))
+            print("exposure:", self.device.get_option(rs.option.exposure),
+                  "gain:", self.device.get_option(rs.option.gain))
 
         return self.init_keystone
 
@@ -511,42 +506,14 @@ class Cityscopy:
         # make the 4 pnts matrix perspective transformation
         return cv2.getPerspectiveTransform(keyStonePts, keystone_origin_points_array)
 
-    def select_color_by_mean_value(self, mean_color_RGB):
-        self.color_conversion_threshold
-        '''
-        convert color to hsv for oclidian distance
-        '''
-        bgr_to_grayscale = cv2.cvtColor(mean_color_RGB, cv2.COLOR_BGR2GRAY)
-        return 0 if int(bgr_to_grayscale) < self.color_conversion_threshold else 1
-
-    def find_type_in_tags_array(self, cellColorsArray, tagsArray, grid_dim):
+    def identify_tags(self, cellColorsArray, tagsArray, grid_dim):
         """Get the right brick type out of the list of JSON types.
-
-        Steps:
-            - get the colors array from the scanners
-            - get the JSON lists of type tags, mapping, rotations
-            - parse the color data into an NP array of the table shape
-
-        Args:
-        Returns an array of found types
         """
-        scan_results_array = []
-        # create np colors array with table struct
-        np_array_of_scanned_colors = np.reshape(
-            cellColorsArray, (grid_dim[0] * grid_dim[1], 16))
-
-        # go through the results
-        for this_16_bits in np_array_of_scanned_colors:
-            result_tag = self.brick_rotation_check(
-                this_16_bits, tagsArray)
-            # if no results were found
-            if result_tag is None:
-                result_tag = [-1, -1]
-            # add a list of results to the array
-            scan_results_array.append(result_tag)
-
-        # finally, return this list to main program for UDP
-        return scan_results_array
+        return [
+            self.brick_rotation_check(this_16_bits, tagsArray) or [-1, -1]
+            for this_16_bits in np.reshape(
+                cellColorsArray, (grid_dim[0] * grid_dim[1], 16))
+        ]
 
     def brick_rotation_check(self, this_16_bits, tagsArray):
         tags_array_counter = 0
