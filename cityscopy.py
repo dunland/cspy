@@ -327,9 +327,8 @@ class Cityscopy:
                             (50, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
                 cv2.putText(keystoned_video, "gain: " + str(self.gain) + " [g/h]",
                             (50, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
-                # cv2.putText(keystoned_video, "color_conversion_threshold: " +
-                #             str(self.color_conversion_threshold) + " [+/-]",
-                #             (50, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
+                cv2.putText(keystoned_video, "max_l: " + str(self.max_l) + " [+/-]",
+                            (50, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
 
             # draw the video to screen
             cv2.imshow("scanner_gui_window", keystoned_video)
@@ -417,7 +416,7 @@ class Cityscopy:
         corner_keys = ['1', '2', '3', '4']
         move_keys = ['w', 'a', 's', 'd']
         realsense_keys = ['e', 'r', 'g', 'h']
-        # bgr_threshold_keys = ['+', '-']
+        bgr_threshold_keys = ['+', '-']
 
         key = chr(cv2.waitKey(1) & 255)
 
@@ -425,13 +424,13 @@ class Cityscopy:
             self.magnitude = 10 if self.magnitude == 1 else 1
             print("MAGNITUDE", self.magnitude)
 
-        # elif key in bgr_threshold_keys:
-        #     if key == '+':
-        #         self.color_conversion_threshold += self.magnitude
-        #         print("color to greyscale at ", self.color_conversion_threshold)
-        #     elif key == '-':
-        #         self.color_conversion_threshold -= self.magnitude
-        #         print("color to greyscale at ", self.color_conversion_threshold)
+        elif key in bgr_threshold_keys:
+            if key == '+':
+                self.max_l += self.magnitude
+                print("luminance threshold at ", self.max_l)
+            elif key == '-':
+                self.max_l -= self.magnitude
+                print("luminance threshold at ", self.max_l)
 
         elif key in corner_keys:
             self.selected_corner = key
@@ -484,7 +483,7 @@ class Cityscopy:
             self.save_keystone_to_file(self.init_keystone)
             self.table_settings['realsense']['exposure'] = self.exposure
             self.table_settings['realsense']['gain'] = self.gain
-            # self.table_settings['color_conversion_threshold'] = self.color_conversion_threshold
+            self.table_settings['max_l'] = self.max_l
             with open('settings/cityscopy.json', 'w') as output_file:
                 json.dump(self.table_settings, output_file)
 
