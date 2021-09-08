@@ -227,18 +227,26 @@ class Cityscopy:
             video_res = (int(video_capture.get(3)), int(video_capture.get(4)))
 
         # define the video window
-        cv2.namedWindow('scanner_gui_window', cv2.WINDOW_AUTOSIZE)
+        cv2.namedWindow('scanner_gui_window', cv2.WINDOW_NORMAL)
 
         # define the size for each scanner
         block_size = (video_res[0] / grid_dim[0], video_res[1] / grid_dim[1])
         codepoint_size = (block_size[0] / 4, block_size[1] / 4)
 
         # get coordinates for scanners (top left)
-        scanner_points = [
-            (int(i * codepoint_size[0]), int(j * codepoint_size[1]))
-            for i in range(4 * grid_dim[0])
-            for j in range(4 * grid_dim[1])
-        ]
+        scanner_points = []
+        # create the 4x4 sub grid cells
+        for y in range(grid_dim[1]):
+            for x in range(grid_dim[0]):
+                x_positions = x * codepoint_size[0] * 4
+                y_positions = y * codepoint_size[1] * 4
+                # make the actual location for the 4x4 scanner points
+                for i in range(4):
+                    for j in range(4):
+                        # add them to list
+                        scanner_points.append(
+                            (int(x_positions + i * codepoint_size[0]),
+                             int(y_positions + j * codepoint_size[1])))
 
         previous_colors = []
 
