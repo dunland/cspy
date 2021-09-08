@@ -266,6 +266,13 @@ class Cityscopy:
                 elif RET:
                     color_frame = cv2.flip(color_frame, 1)
 
+            # rotate image
+            if self.table_settings['rotate_image']:
+                if self.using_realsense:
+                    color_frame = np.rot90(color_frame, 2)
+                else:
+                    color_frame = cv2.rotate(color_frame, rotateCode=cv2.ROTATE_180)
+
             # warp the video based on keystone info
             keystoned_video = cv2.warpPerspective(
                 color_frame, keystone_data, (int(video_resolution_x), int(video_resolution_y)))

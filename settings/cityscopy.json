@@ -37,5 +37,6 @@
         "0011001111001100",
         "0111111111111111"
     ],
-    "mirror_cam": true
+    "mirror_cam": true,
+    "rotate_image": true
 }
