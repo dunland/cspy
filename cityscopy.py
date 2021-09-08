@@ -150,6 +150,7 @@ class Cityscopy:
 
         # init a dict to be shared among procceses
         self.multiprocess_shared_dict['scan'] = None
+        self.multiprocess_shared_dict['slider'] = 0
 
         # defines a multiprocess for sending the data
         self.process_send_packet = Process(target=self.create_data_json,
@@ -183,7 +184,7 @@ class Cityscopy:
                     # observe slider cells:
                     for i in range(self.table_settings['ncols'], 0, -1):
                         if scan_results[i] != [0, 0]:
-                            self.multiprocess_shared_dict['slider'] = 100/self.table_settings['ncols']*i
+                            self.multiprocess_shared_dict['slider'] = 1/self.table_settings['ncols']*i
                             break
 
                 except Exception as ERR:
@@ -296,6 +297,13 @@ class Cityscopy:
                     color_frame = np.flip(color_frame, 1)
                 elif RET:
                     color_frame = cv2.flip(color_frame, 1)
+
+            # rotate image
+            if self.table_settings['rotate_image']:
+                if self.using_realsense:
+                    color_frame = np.rot90(color_frame, 2)
+                else:
+                    color_frame = cv2.rotate(color_frame, rotateCode=ROTATE_180)
 
             # warp the video based on keystone info
             keystoned_video = cv2.warpPerspective(
@@ -454,6 +462,7 @@ class Cityscopy:
 
                 # debug print
                 print('\n', 'CityScopy grid sent at:', datetime.now())
+                print("slider:", self.multiprocess_shared_dict['slider'])
                 # print(scan_results)
 
     def send_json_to_UDP(self, scan_results):

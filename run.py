@@ -18,15 +18,16 @@ if __name__ == '__main__':
             data = json.load(f)
             data['camId'] = cam
             data['realsense']['active'] = False
+            json.dump(data, f)
 
-        with open('settings/export.json', 'w') as output_file:
+        with open('settings/cityscopy.json', 'w') as output_file:
             json.dump(data, output_file)
 
     elif key == 'r':
         with open(CITYSCOPY_SETTINGS_PATH) as f:
             data = json.load(f)
             data['realsense']['active'] = True
-        with open('settings/export.json', 'w') as output_file:
+        with open('settings/cityscopy.json', 'w') as output_file:
                 json.dump(data, output_file)
 
     # run CityScopy main methods

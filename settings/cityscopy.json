@@ -19,12 +19,12 @@
     "cell_gap": 10,
     "camId": 0,
     "realsense": {
-        "active": false,
+        "active": true,
         "exposure:": 100,
         "gain": 2,
-        "exposure": 388.0
+        "exposure": 478.0
     },
-    "color_conversion_threshold": 82,
+    "color_conversion_threshold": 66,
     "interval": 1000,
     "gui": true,
     "cityio": false,
@@ -37,5 +37,6 @@
         "0011001111001100",
         "0111111111111111"
     ],
-    "mirror_cam": true
+    "mirror_cam": true,
+    "rotate_image" : true
 }
