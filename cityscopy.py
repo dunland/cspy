@@ -269,7 +269,7 @@ class Cityscopy:
                 if self.using_realsense:
                     color_frame = np.rot90(color_frame, 2)
                 else:
-                    color_frame = cv2.rotate(color_frame, rotateCode=ROTATE_180)
+                    color_frame = cv2.rotate(color_frame, rotateCode=cv2.ROTATE_180)
 
             # warp the video based on keystone info
             keystoned_video = cv2.warpPerspective(color_frame, keystone_data, video_res)
