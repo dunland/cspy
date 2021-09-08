@@ -1,33 +1,19 @@
 {
-    "cityscope_project_name": "q100_viz",
-    "type": [
-        "0",
-        "1",
-        "2",
-        "3",
-        "4",
-        "5"
-    ],
-    "rotation": [
-        "0",
-        "1",
-        "2",
-        "3"
-    ],
     "nrows": 20,
     "ncols": 22,
-    "cell_gap": 10,
-    "camId": 0,
+    "cam_id": 0,
     "realsense": {
         "active": true,
         "exposure:": 100,
         "gain": 2,
         "exposure": 478.0
     },
-    "color_conversion_threshold": 66,
+    "max_l": 120,
+    "max_a": 255,
+    "max_b": 132,
+    "quantile": 0.3,
     "interval": 1000,
     "gui": true,
-    "cityio": false,
     "tags": [
         "1111111111111111",
         "0000000000000000",
