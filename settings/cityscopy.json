@@ -3,10 +3,10 @@
     "ncols": 22,
     "cam_id": 0,
     "realsense": {
-        "active": false,
+        "active": true,
         "exposure:": 100,
         "gain": 2,
-        "exposure": 388.0
+        "exposure": 478.0
     },
     "max_l": 120,
     "max_a": 255,

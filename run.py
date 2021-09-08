@@ -18,8 +18,9 @@ if __name__ == '__main__':
             data = json.load(f)
             data['cam_id'] = cam
             data['realsense']['active'] = False
+            json.dump(data, f)
 
-        with open('settings/export.json', 'w') as output_file:
+        with open('settings/cityscopy.json', 'w') as output_file:
             json.dump(data, output_file)
 
     elif key == 'r':
