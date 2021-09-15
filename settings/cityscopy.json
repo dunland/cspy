@@ -3,7 +3,7 @@
     "ncols": 22,
     "cam_id": 0,
     "realsense": {
-        "active": true,
+        "active": false,
         "exposure:": 100,
         "gain": 2,
         "exposure": 478.0
@@ -23,6 +23,6 @@
         "0011001111001100",
         "0111111111111111"
     ],
-    "mirror_cam": true,
-    "rotate_image": true
+    "mirror_cam": false,
+    "rotate_image": false
 }

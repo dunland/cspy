@@ -355,7 +355,7 @@ class Cityscopy:
                 print('CityScopy grid sent at:', datetime.now())
 
     def send_json_to_UDP(self, scan_results):
-        json_dict = {'grid': scan_results, 'slider': 0.5}
+        json_dict = {'grid': scan_results}
         json_string = json.dumps(json_dict)
 
         # defining the udp endpoint
