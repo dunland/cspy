@@ -1,17 +1,17 @@
 {
     "nrows": 20,
     "ncols": 22,
-  "cam_id": 0,
+    "cam_id": 0,
     "realsense": {
         "active": false,
         "exposure:": 100,
         "gain": 2,
         "exposure": 388.0
     },
-  "max_l": 120,
-  "max_a": 255,
-  "max_b": 132,
-  "quantile": 0.3,
+    "max_l": 120,
+    "max_a": 255,
+    "max_b": 132,
+    "quantile": 0.3,
     "interval": 1000,
     "gui": true,
     "tags": [
@@ -23,5 +23,6 @@
         "0011001111001100",
         "0111111111111111"
     ],
-    "mirror_cam": true
+    "mirror_cam": true,
+    "rotate_image": true
 }
