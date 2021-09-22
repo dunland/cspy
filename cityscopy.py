@@ -171,42 +171,13 @@ class Cityscopy:
         # defines a multiprocess for sending the data
         self.process_send_packet = Process(target=self.create_data_json,
                                            args=([self.mp_shared_dict]))
-        self.slider = Process(target=self.slider_function, args=([self.mp_shared_dict]))
 
         self.process_send_packet.start()
-        self.slider.start()
 
         # start camera on main thread due to multiprocces issue
         self.scanner_function(self.mp_shared_dict)
         # join the two processes
         self.process_send_packet.join()
-
-    def slider_function(self, mp_shared_dict):
-
-        SEND_INTERVAL = 100
-        # initial dummy value for old grid
-        old_scan_results = [-1]
-        SEND_INTERVAL = timedelta(milliseconds=SEND_INTERVAL)
-        last_observed = datetime.now()
-
-        while True:
-            scan_results = mp_shared_dict['scan']
-            from_last_observed = datetime.now() - last_observed
-
-            if scan_results and scan_results != old_scan_results and \
-                    from_last_observed > SEND_INTERVAL:
-                try:
-                    # observe slider cells:
-                    for i in range(self.table_settings['ncols'], 0, -1):
-                        if scan_results[i] != [0, 0]:
-                            self.mp_shared_dict['slider'] = 1/self.table_settings['ncols']*i
-                            break
-
-                except Exception as ERR:
-                    print(ERR)
-                # match the two grid after send
-                old_scan_results = scan_results
-                last_observed = datetime.now()
 
     def scanner_function(self, mp_shared_dict):
         # get init keystones
@@ -295,6 +266,13 @@ class Cityscopy:
                 (ch_l <= self.max_l) & (ch_a <= self.max_a) & (ch_b <= self.max_b), 0, 255
                 ).astype(np.uint8)
 
+            # get slider value from first row
+            slider_row = binary_image[:int(block_size[1])]
+            slider_coord = self.get_slider_coord(slider_row)
+
+            if slider_coord:
+                mp_shared_dict['slider'] = slider_coord[0] / video_res[0]
+
             # run through coordinates and analyse each image
             for x, y in scanner_points:
                 # get image slice for scanning
@@ -350,6 +328,23 @@ class Cityscopy:
         video_capture.release()
         cv2.destroyAllWindows()
 
+    def get_slider_coord(self, frame):
+        '''Get x,y of slider position in frame. Any black blob is considered a slider'''
+        # find contours
+        kernel = np.ones((7, 7), np.uint8)
+        mask = cv2.morphologyEx(frame, cv2.MORPH_CLOSE, kernel)
+        contours, _ = cv2.findContours(mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+
+        # get centroid of first contour
+        centroid = None
+        if len(contours) > 0:
+            moments = cv2.moments(contours[0])
+            if moments['m00'] > 0:
+                centroid = (int(moments['m10'] / moments['m00']),
+                            int(moments['m01'] / moments['m00']))
+
+        return centroid
+
     def ui_selected_corner(self, x, y, vid):
         """prints text on video window"""
         mid = (int(x / 2), int(y / 2))
@@ -390,7 +385,6 @@ class Cityscopy:
 
                 # debug print
                 print('CityScopy grid sent at:', datetime.now())
-                print("slider:", self.mp_shared_dict['slider'])
 
     def send_json_to_UDP(self, scan_results):
         slider_val = self.mp_shared_dict['slider']
