@@ -49,6 +49,7 @@ of uniquely tagged LEGO array
 ##################################################
 '''
 
+import math
 import cv2
 import numpy as np
 from datetime import timedelta
@@ -85,6 +86,14 @@ class Cityscopy:
         self.exposure = self.table_settings['realsense']['exposure']
         self.gain = self.table_settings['realsense']['gain']
         self.using_realsense = self.table_settings['realsense']['active']
+
+        self.tag_length = self.table_settings.get('tag_length', 4)
+        self.width = int(math.sqrt(self.tag_length))
+        self.tags = self.table_settings['tags']
+        self.tags_np = np.int8([[int(b) for b in tag] for tag in self.tags])
+
+        for tag in self.tags:
+            assert len(tag) == self.tag_length
 
         # color conversion thresholds
         self.max_l = self.table_settings.get('max_l', 127)
@@ -208,8 +217,6 @@ class Cityscopy:
         grid_dim = (int(self.table_settings['ncols']),
                     int(self.table_settings['nrows']))
 
-        array_of_tags_from_json = [[int(ch) for ch in tag] for tag in self.table_settings['tags']]
-
         # serial num of camera, to switch between cameras
         camPos = self.table_settings['cam_id']
 
@@ -231,22 +238,17 @@ class Cityscopy:
 
         # define the size for each scanner
         block_size = (video_res[0] / grid_dim[0], video_res[1] / grid_dim[1])
-        codepoint_size = (block_size[0] / 4, block_size[1] / 4)
+        codepoint_size = (block_size[0] / self.width, block_size[1] / self.width)
 
-        # get coordinates for scanners (top left)
+        # get coordinates for scanners (top left corner of each area)
         scanner_points = []
-        # create the 4x4 sub grid cells
         for y in range(grid_dim[1]):
             for x in range(grid_dim[0]):
-                x_positions = x * codepoint_size[0] * 4
-                y_positions = y * codepoint_size[1] * 4
-                # make the actual location for the 4x4 scanner points
-                for i in range(4):
-                    for j in range(4):
-                        # add them to list
-                        scanner_points.append(
-                            (int(x_positions + i * codepoint_size[0]),
-                             int(y_positions + j * codepoint_size[1])))
+                scanner_points.extend([
+                    (int(x * block_size[0] + i * codepoint_size[0]),
+                     int(y * block_size[1] + j * codepoint_size[1]))
+                    for i in range(self.width) for j in range(self.width)
+                ])
 
         previous_colors = []
 
@@ -307,9 +309,12 @@ class Cityscopy:
             # reduce unnecessary scan analysis and sending by comparing
             # the list of scanned cells to the previous one
             if current_colors != previous_colors:
-                # Find the type and store results in mp_shared_dict
-                mp_shared_dict['scan'] = self.identify_tags(
-                    current_colors, array_of_tags_from_json, grid_dim)
+                # identify tags and and store result in mp_shared_dict
+                mp_shared_dict['scan'] = [
+                    self.brick_rotation_check(block) or [-1, -1]
+                    for block in np.reshape(
+                        current_colors, (grid_dim[0] * grid_dim[1], self.tag_length))
+                ]
                 previous_colors = current_colors
 
             if self.table_settings['gui']:
@@ -554,39 +559,16 @@ class Cityscopy:
         # make the 4 pnts matrix perspective transformation
         return cv2.getPerspectiveTransform(keyStonePts, keystone_origin_points_array)
 
-    def identify_tags(self, cellColorsArray, tagsArray, grid_dim):
-        """Get the right brick type out of the list of JSON types.
-        """
-        return [
-            self.brick_rotation_check(this_16_bits, tagsArray) or [-1, -1]
-            for this_16_bits in np.reshape(
-                cellColorsArray, (grid_dim[0] * grid_dim[1], 16))
-        ]
+    def brick_rotation_check(self, block):
+        # convert block to square representation for rotation checks
+        block = np.reshape(block, (self.width, self.width))
 
-    def brick_rotation_check(self, this_16_bits, tagsArray):
-        tags_array_counter = 0
-
-        for this_tag in tagsArray:
-            # if this 16 bits equal the tag as is
-            if np.array_equal(this_16_bits, this_tag):
-                return [tags_array_counter, 0]
-            # convert list of 16 bits to 4x4 matrix for rotation
-            brk_4x4 = np.reshape(this_16_bits, (4, 4))
-            # rotate once
-            brk_4x4_270 = np.reshape(np.rot90(brk_4x4), 16)
-            if np.array_equal(brk_4x4_270, this_tag):
-                return [tags_array_counter, 1]
-            # rotate once
-            brk_4x4_180 = np.reshape(np.rot90(np.rot90(brk_4x4)), 16)
-            if np.array_equal(brk_4x4_180, this_tag):
-                return [tags_array_counter, 2]
-            # rotate once
-            brk_4x4_90 = np.reshape(np.rot90(np.rot90(np.rot90(brk_4x4))), 16)
-            if np.array_equal(brk_4x4_90, this_tag):
-                return [tags_array_counter, 3]
-            else:
-                # if no rotation was found go to next tag in tag list
-                tags_array_counter += 1
+        for tag_count, tag in enumerate(self.tags_np):
+            # test all four rotations
+            for i in range(4):
+                if np.array_equal(np.reshape(block, self.tag_length), tag):
+                    return [tag_count, i]
+                block = np.rot90(block)
 
     def keystone(self):
         # file path to save
