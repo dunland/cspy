@@ -59,24 +59,17 @@ import json
 import os
 import socket
 from multiprocessing import Process, Manager
-
-if json.load(open("settings/cityscopy.json"))['realsense']['active']:
-    import pyrealsense2 as rs
+import pyrealsense2 as rs
 
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
 
 
 class Cityscopy:
-    '''scanner for CityScope'''
-
     def __init__(self, path):
-        '''init function '''
         # load info from json file
-        self.SETTINGS_PATH = path
-        # get the table settings. This is used bu many metohds
-        self.table_settings = json.load(open("settings/cityscopy.json"))
-        print('getting settings for CityScopy...')
+        with open(path) as settings:
+            self.table_settings = json.load(settings)
 
         # init corners variables
         self.selected_corner = None
@@ -106,17 +99,6 @@ class Cityscopy:
         self.POINT_INDEX = None
         self.POINTS = None
         self.MOUSE_POSITION = None
-
-    def print_cams(self):
-        print("reading first 100 cameras...")
-        arr = []
-        for index in range(100):
-            cap = cv2.VideoCapture(index)
-            # returns video frames; False if no frames have been grabbed
-            if cap.read()[0]:
-                arr.append(index)
-            cap.release()
-        print("found cameras: ", arr)
 
     def realsense_init(self):
         # Configure depth and color streams
@@ -455,16 +437,11 @@ class Cityscopy:
                 elif key == 's':
                     self.init_keystone[3][1] -= self.magnitude
 
-        #  saves to file
+        # save to file
         elif key == 'k':
             # reset selected corner
             self.selected_corner = None
             self.save_keystone_to_file(self.init_keystone)
-            self.table_settings['realsense']['exposure'] = self.exposure
-            self.table_settings['realsense']['gain'] = self.gain
-            self.table_settings['max_l'] = self.max_l
-            with open('settings/cityscopy.json', 'w') as output_file:
-                json.dump(self.table_settings, output_file)
 
         # realsense exposure control
         if self.using_realsense and key in realsense_keys:
