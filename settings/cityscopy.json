@@ -23,6 +23,11 @@
         "1000",
         "0000"
     ],
+    "slider": {
+        "row": 0,
+        "start": 1,
+        "end": 10
+    },
     "mirror_cam": false,
     "rotate_image": false
 }

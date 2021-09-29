@@ -94,6 +94,8 @@ class Cityscopy:
         self.max_b = self.table_settings.get('max_b', 255)
         self.quantile = self.table_settings.get('quantile', 0.5)
 
+        self.slider = self.table_settings.get('slider')
+
         # init keystone variables
         self.FRAME = None
         self.POINT_INDEX = None
@@ -245,15 +247,21 @@ class Cityscopy:
 
             # reduce the colors based on a threshold
             binary_image = np.where(
-                (ch_l <= self.max_l) & (ch_a <= self.max_a) & (ch_b <= self.max_b), 0, 255
+                (ch_l <= self.max_l) & (ch_a <= self.max_a) & (ch_b <= self.max_b), 255, 0
                 ).astype(np.uint8)
 
-            # get slider value from first row
-            slider_row = binary_image[:int(block_size[1])]
-            slider_coord = self.get_slider_coord(slider_row)
+            # get slider value
+            if self.slider is not None:
+                x0 = int(self.slider['row'] * block_size[1])
+                x1 = int((self.slider['row'] + 1) * block_size[1])
+                y0 = int(self.slider['start'] * block_size[0])
+                y1 = int(self.slider['end'] * block_size[0])
+                slider_row = binary_image[x0:x1, y0:y1]
 
-            if slider_coord:
-                mp_shared_dict['slider'] = slider_coord[0] / video_res[0]
+                slider_coord = self.get_slider_coord(slider_row)
+
+                if slider_coord:
+                    mp_shared_dict['slider'] = slider_coord[0] / len(slider_row[0])
 
             # run through coordinates and analyse each image
             for x, y in scanner_points:
@@ -262,9 +270,7 @@ class Cityscopy:
                                            x:int(x + codepoint_size[0])]
 
                 # determine color based on the distribution of B/W values in the image
-                detected_color = BLACK if np.quantile(scan_pixels, self.quantile) == 0 else WHITE
-
-                current_colors.append(0 if detected_color == BLACK else 1)
+                current_colors.append(0 if np.quantile(scan_pixels, self.quantile) == 0 else 1)
 
             # reduce unnecessary scan analysis and sending by comparing
             # the list of scanned cells to the previous one
@@ -290,7 +296,13 @@ class Cityscopy:
                 # draw dots with detected color
                 for (x, y), value in zip(scanner_points, current_colors):
                     center = (int(x + codepoint_size[0] / 2), int(y + codepoint_size[1] / 2))
-                    cv2.circle(keystoned_video, center, 2, WHITE if value else BLACK, -1)
+                    cv2.circle(keystoned_video, center, 2, BLACK if value else WHITE, -1)
+
+                # draw slider
+                if slider_coord:
+                    x = int((self.slider['start'] + 1) * codepoint_size[0] + slider_coord[0])
+                    y = int(self.slider['row'] * codepoint_size[1] + slider_coord[1])
+                    cv2.line(keystoned_video, (x, y - 30), (x, y + 30), WHITE, 4)
 
                 # draw arrow to interaction area
                 self.ui_selected_corner(video_res[0], video_res[1], keystoned_video)
