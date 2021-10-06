@@ -94,7 +94,10 @@ class Cityscopy:
         self.max_b = self.table_settings.get('max_b', 255)
         self.quantile = self.table_settings.get('quantile', 0.5)
 
-        self.slider = self.table_settings.get('slider')
+        self.slider = None
+
+        if self.table_settings.get('slider'):
+            self.slider = Slider(self.table_settings.get('slider'))
 
         # init keystone variables
         self.FRAME = None
@@ -251,17 +254,9 @@ class Cityscopy:
                 ).astype(np.uint8)
 
             # get slider value
-            if self.slider is not None:
-                x0 = int(self.slider['row'] * block_size[1])
-                x1 = int((self.slider['row'] + 1) * block_size[1])
-                y0 = int(self.slider['start'] * block_size[0])
-                y1 = int(self.slider['end'] * block_size[0])
-                slider_row = binary_image[x0:x1, y0:y1]
-
-                slider_coord = self.get_slider_coord(slider_row)
-
-                if slider_coord:
-                    mp_shared_dict['slider'] = slider_coord[0] / len(slider_row[0])
+            if self.slider:
+                mp_shared_dict['slider'] = self.slider.evaluate(
+                    binary_image, video_res, block_size)
 
             # run through coordinates and analyse each image
             for x, y in scanner_points:
@@ -299,10 +294,8 @@ class Cityscopy:
                     cv2.circle(keystoned_video, center, 2, BLACK if value else WHITE, -1)
 
                 # draw slider
-                if slider_coord:
-                    x = int((self.slider['start'] + 1) * codepoint_size[0] + slider_coord[0])
-                    y = int(self.slider['row'] * codepoint_size[1] + slider_coord[1])
-                    cv2.line(keystoned_video, (x, y - 30), (x, y + 30), WHITE, 4)
+                if self.slider:
+                    self.slider.draw(keystoned_video)
 
                 # draw arrow to interaction area
                 self.ui_selected_corner(video_res[0], video_res[1], keystoned_video)
@@ -321,23 +314,6 @@ class Cityscopy:
         # close opencv
         video_capture.release()
         cv2.destroyAllWindows()
-
-    def get_slider_coord(self, frame):
-        '''Get x,y of slider position in frame. Any black blob is considered a slider'''
-        # find contours
-        kernel = np.ones((7, 7), np.uint8)
-        mask = cv2.morphologyEx(frame, cv2.MORPH_CLOSE, kernel)
-        contours, _ = cv2.findContours(mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
-
-        # get centroid of first contour
-        centroid = None
-        if len(contours) > 0:
-            moments = cv2.moments(contours[0])
-            if moments['m00'] > 0:
-                centroid = (int(moments['m10'] / moments['m00']),
-                            int(moments['m01'] / moments['m00']))
-
-        return centroid
 
     def ui_selected_corner(self, x, y, vid):
         """prints text on video window"""
@@ -639,3 +615,57 @@ class Cityscopy:
             self.pipeline.stop()
 
         cv2.destroyAllWindows()
+
+
+class Slider:
+    def __init__(self, config):
+        '''Set up a slider instance'''
+        self.y = config['y']          # y location (center)
+        self.x_min = config['x_min']  # x location of minimum slider position (centroid)
+        self.x_max = config['x_max']  # x location of maximum slider position (centroid)
+
+    def evaluate(self, frame, video_res, block_size):
+        '''Extract slider value from the original image.
+
+        The slider tag should be the equal to block_size.'''
+        self.y0 = int(max(self.y - block_size[1] / 2, 0))
+        self.y1 = int(min(self.y + block_size[1] / 2, video_res[1] - 1))
+        self.x0 = int(max(self.x_min - block_size[0] / 2, 0))
+        self.x1 = int(min(self.x_max + block_size[0] / 2, video_res[0] - 1))
+
+        slider_row = frame[self.y0:self.y1, self.x0:self.x1]
+
+        self.slider_coord = self.get_slider_coord(slider_row)
+
+        if self.slider_coord:
+            slider_x_max = self.x1 - self.x0 - block_size[0]
+            slider_value = min(max(
+                (self.slider_coord[0] - block_size[0] / 2) / slider_x_max, 0), 1)
+            return slider_value
+
+    def draw(self, frame):
+        '''Draw slider range and current location onto image'''
+        cv2.line(frame, (self.x_min, self.y), (self.x_max, self.y), WHITE, 2)
+
+        if self.slider_coord:
+            cv2.line(frame,
+                     (self.x0 + self.slider_coord[0], self.y0 + self.slider_coord[1] - 20),
+                     (self.x0 + self.slider_coord[0], self.y0 + self.slider_coord[1] + 20),
+                     WHITE, 8)
+
+    def get_slider_coord(self, frame):
+        '''Get x,y of slider position in frame. Any black blob is considered a slider'''
+        # find contours
+        kernel = np.ones((7, 7), np.uint8)
+        mask = cv2.morphologyEx(frame, cv2.MORPH_CLOSE, kernel)
+        contours, _ = cv2.findContours(mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+
+        # get centroid of first contour
+        centroid = None
+        if len(contours) > 0:
+            moments = cv2.moments(contours[0])
+            if moments['m00'] > 0:
+                centroid = (int(moments['m10'] / moments['m00']),
+                            int(moments['m01'] / moments['m00']))
+
+        return centroid

@@ -24,9 +24,9 @@
         "0000"
     ],
     "slider": {
-        "row": 0,
-        "start": 1,
-        "end": 10
+        "x_min": 50,
+        "x_max": 1700,
+        "y": 260
     },
     "mirror_cam": false,
     "rotate_image": false
