@@ -94,10 +94,9 @@ class Cityscopy:
         self.max_b = self.table_settings.get('max_b', 255)
         self.quantile = self.table_settings.get('quantile', 0.5)
 
-        self.slider = None
-
-        if self.table_settings.get('slider'):
-            self.slider = Slider(self.table_settings.get('slider'))
+        self.sliders = [
+            Slider(options) for options in self.table_settings.get('sliders', [])
+        ]
 
         # init keystone variables
         self.FRAME = None
@@ -153,7 +152,7 @@ class Cityscopy:
 
         # init a dict to be shared among procceses
         self.mp_shared_dict['scan'] = None
-        self.mp_shared_dict['slider'] = 0
+        self.mp_shared_dict['sliders'] = None
 
         # defines a multiprocess for sending the data
         self.process_send_packet = Process(target=self.create_data_json,
@@ -253,10 +252,11 @@ class Cityscopy:
                 (ch_l <= self.max_l) & (ch_a <= self.max_a) & (ch_b <= self.max_b), 255, 0
                 ).astype(np.uint8)
 
-            # get slider value
-            if self.slider:
-                mp_shared_dict['slider'] = self.slider.evaluate(
-                    binary_image, video_res, block_size)
+            # get slider values
+            mp_shared_dict['sliders'] = {
+                slider.id: slider.evaluate(binary_image, video_res, block_size)
+                for slider in self.sliders
+            }
 
             # run through coordinates and analyse each image
             for x, y in scanner_points:
@@ -293,9 +293,9 @@ class Cityscopy:
                     center = (int(x + codepoint_size[0] / 2), int(y + codepoint_size[1] / 2))
                     cv2.circle(keystoned_video, center, 2, BLACK if value else WHITE, -1)
 
-                # draw slider
-                if self.slider:
-                    self.slider.draw(keystoned_video)
+                # draw sliders
+                for slider in self.sliders:
+                    slider.draw(keystoned_video)
 
                 # draw arrow to interaction area
                 self.ui_selected_corner(video_res[0], video_res[1], keystoned_video)
@@ -357,8 +357,8 @@ class Cityscopy:
                 print('CityScopy grid sent at:', datetime.now())
 
     def send_json_to_UDP(self, scan_results):
-        slider_val = self.mp_shared_dict['slider']
-        json_dict = {'grid': scan_results, 'slider': slider_val}
+        slider_val = self.mp_shared_dict['sliders']
+        json_dict = {'grid': scan_results, 'sliders': slider_val}
         json_string = json.dumps(json_dict)
 
         # defining the udp endpoint
@@ -620,6 +620,7 @@ class Cityscopy:
 class Slider:
     def __init__(self, config):
         '''Set up a slider instance'''
+        self.id = config['id']
         self.y = config['y']          # y location (center)
         self.x_min = config['x_min']  # x location of minimum slider position (centroid)
         self.x_max = config['x_max']  # x location of maximum slider position (centroid)
