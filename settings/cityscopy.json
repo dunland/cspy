@@ -26,6 +26,7 @@
     "sliders": [
         {
             "id": "slider0",
+            "step_size": 0.01,
             "x_min": 50,
             "x_max": 1700,
             "y": 260

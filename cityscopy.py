@@ -50,6 +50,7 @@ of uniquely tagged LEGO array
 '''
 
 import math
+import decimal
 import cv2
 import numpy as np
 from datetime import timedelta
@@ -621,6 +622,7 @@ class Slider:
     def __init__(self, config):
         '''Set up a slider instance'''
         self.id = config['id']
+        self.step_size = decimal.Decimal(str(config['step_size']))
         self.y = config['y']          # y location (center)
         self.x_min = config['x_min']  # x location of minimum slider position (centroid)
         self.x_max = config['x_max']  # x location of maximum slider position (centroid)
@@ -642,7 +644,8 @@ class Slider:
             slider_x_max = self.x1 - self.x0 - block_size[0]
             slider_value = min(max(
                 (self.slider_coord[0] - block_size[0] / 2) / slider_x_max, 0), 1)
-            return slider_value
+            # round according to step_size
+            return decimal.Decimal(slider_value).quantize(self.step_size, decimal.ROUND_HALF_UP)
 
     def draw(self, frame):
         '''Draw slider range and current location onto image'''
