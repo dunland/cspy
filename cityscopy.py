@@ -630,7 +630,7 @@ class Slider:
     def evaluate(self, frame, video_res, block_size):
         '''Extract slider value from the original image.
 
-        The slider tag should be the equal to block_size.'''
+        The slider tag should be as large as block_size.'''
         self.y0 = int(max(self.y - block_size[1] / 2, 0))
         self.y1 = int(min(self.y + block_size[1] / 2, video_res[1] - 1))
         self.x0 = int(max(self.x_min - block_size[0] / 2, 0))
@@ -645,7 +645,8 @@ class Slider:
             slider_value = min(max(
                 (self.slider_coord[0] - block_size[0] / 2) / slider_x_max, 0), 1)
             # round according to step_size
-            return decimal.Decimal(slider_value).quantize(self.step_size, decimal.ROUND_HALF_UP)
+            return float(
+                decimal.Decimal(slider_value).quantize(self.step_size, decimal.ROUND_HALF_UP))
 
     def draw(self, frame):
         '''Draw slider range and current location onto image'''
