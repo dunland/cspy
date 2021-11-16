@@ -50,6 +50,7 @@ of uniquely tagged LEGO array
 '''
 
 import math
+import decimal
 import cv2
 import numpy as np
 from datetime import timedelta
@@ -93,6 +94,10 @@ class Cityscopy:
         self.max_a = self.table_settings.get('max_a', 255)
         self.max_b = self.table_settings.get('max_b', 255)
         self.quantile = self.table_settings.get('quantile', 0.5)
+
+        self.sliders = [
+            Slider(options) for options in self.table_settings.get('sliders', [])
+        ]
 
         # init keystone variables
         self.FRAME = None
@@ -148,15 +153,17 @@ class Cityscopy:
 
         # init a dict to be shared among procceses
         self.mp_shared_dict['scan'] = None
+        self.mp_shared_dict['sliders'] = None
 
         # defines a multiprocess for sending the data
         self.process_send_packet = Process(target=self.create_data_json,
                                            args=([self.mp_shared_dict]))
+
         self.process_send_packet.start()
 
         # start camera on main thread due to multiprocces issue
         self.scanner_function(self.mp_shared_dict)
-
+        # join the two processes
         self.process_send_packet.join()
 
     def scanner_function(self, mp_shared_dict):
@@ -243,8 +250,14 @@ class Cityscopy:
 
             # reduce the colors based on a threshold
             binary_image = np.where(
-                (ch_l <= self.max_l) & (ch_a <= self.max_a) & (ch_b <= self.max_b), 0, 255
+                (ch_l <= self.max_l) & (ch_a <= self.max_a) & (ch_b <= self.max_b), 255, 0
                 ).astype(np.uint8)
+
+            # get slider values
+            mp_shared_dict['sliders'] = {
+                slider.id: slider.evaluate(binary_image, video_res, block_size)
+                for slider in self.sliders
+            }
 
             # run through coordinates and analyse each image
             for x, y in scanner_points:
@@ -253,9 +266,7 @@ class Cityscopy:
                                            x:int(x + codepoint_size[0])]
 
                 # determine color based on the distribution of B/W values in the image
-                detected_color = BLACK if np.quantile(scan_pixels, self.quantile) == 0 else WHITE
-
-                current_colors.append(0 if detected_color == BLACK else 1)
+                current_colors.append(0 if np.quantile(scan_pixels, self.quantile) == 0 else 1)
 
             # reduce unnecessary scan analysis and sending by comparing
             # the list of scanned cells to the previous one
@@ -281,7 +292,11 @@ class Cityscopy:
                 # draw dots with detected color
                 for (x, y), value in zip(scanner_points, current_colors):
                     center = (int(x + codepoint_size[0] / 2), int(y + codepoint_size[1] / 2))
-                    cv2.circle(keystoned_video, center, 2, WHITE if value else BLACK, -1)
+                    cv2.circle(keystoned_video, center, 2, BLACK if value else WHITE, -1)
+
+                # draw sliders
+                for slider in self.sliders:
+                    slider.draw(keystoned_video)
 
                 # draw arrow to interaction area
                 self.ui_selected_corner(video_res[0], video_res[1], keystoned_video)
@@ -294,7 +309,8 @@ class Cityscopy:
                 cv2.putText(keystoned_video, "max_l: " + str(self.max_l) + " [+/-]",
                             (50, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
 
-                cv2.imshow("scanner_gui_window", keystoned_video)
+            # draw the video to screen
+            cv2.imshow("scanner_gui_window", keystoned_video)
 
         # close opencv
         video_capture.release()
@@ -342,7 +358,8 @@ class Cityscopy:
                 print('CityScopy grid sent at:', datetime.now())
 
     def send_json_to_UDP(self, scan_results):
-        json_dict = {'grid': scan_results}
+        slider_val = self.mp_shared_dict['sliders']
+        json_dict = {'grid': scan_results, 'sliders': slider_val}
         json_string = json.dumps(json_dict)
 
         # defining the udp endpoint
@@ -444,31 +461,35 @@ class Cityscopy:
             self.save_keystone_to_file(self.init_keystone)
 
         # realsense exposure control
-        if self.using_realsense and key in realsense_keys:
-            # increase exposure
-            if key == 'e':
-                self.exposure = self.device.get_option(rs.option.exposure)
-                self.device.set_option(rs.option.exposure, self.exposure + int(self.exposure/10))
+        if self.using_realsense:
+            if key in realsense_keys:
+                # increase exposure
+                if key == 'e':
+                    self.exposure = self.device.get_option(rs.option.exposure)
+                    self.device.set_option(rs.option.exposure, self.exposure + self.magnitude)
 
-            # decrease exposure
-            elif key == 'r':
-                self.exposure = self.device.get_option(rs.option.exposure)
-                if self.exposure > 1:
-                    self.device.set_option(rs.option.exposure, self.exposure - self.exposure/10)
+                # decrease exposure
+                elif key == 'r':
+                    self.exposure = self.device.get_option(rs.option.exposure)
+                    if self.exposure > 1:
+                        self.device.set_option(rs.option.exposure, self.exposure - self.magnitude)
 
-            # increase gain
-            elif key == 'g':
-                self.gain = self.device.get_option(rs.option.gain)
-                self.device.set_option(rs.option.gain, self.gain + int(self.gain/10))
+                # increase gain
+                elif key == 'g':
+                    self.gain = self.device.get_option(rs.option.gain)
+                    self.device.set_option(rs.option.gain, self.gain + self.magnitude)
 
-            # decrease gain
-            elif key == 'h':
-                self.gain = self.device.get_option(rs.option.gain)
-                if self.gain > 1:
-                    self.device.set_option(rs.option.gain, self.gain - self.gain/10)
+                # decrease gain
+                elif key == 'h':
+                    self.gain = self.device.get_option(rs.option.gain)
+                    if self.gain > 1:
+                        self.device.set_option(rs.option.gain, self.gain - self.magnitude)
 
-            print("exposure:", self.device.get_option(rs.option.exposure),
-                  "gain:", self.device.get_option(rs.option.gain))
+                print("exposure:", self.device.get_option(rs.option.exposure),
+                      "gain:", self.device.get_option(rs.option.gain))
+
+            elif key == 'u':
+                self.table_settings['gui'] = not self.table_settings['gui']
 
         return self.init_keystone
 
@@ -595,3 +616,61 @@ class Cityscopy:
             self.pipeline.stop()
 
         cv2.destroyAllWindows()
+
+
+class Slider:
+    def __init__(self, config):
+        '''Set up a slider instance'''
+        self.id = config['id']
+        self.step_size = decimal.Decimal(str(config['step_size']))
+        self.y = config['y']          # y location (center)
+        self.x_min = config['x_min']  # x location of minimum slider position (centroid)
+        self.x_max = config['x_max']  # x location of maximum slider position (centroid)
+
+    def evaluate(self, frame, video_res, block_size):
+        '''Extract slider value from the original image.
+
+        The slider tag should be as large as block_size.'''
+        self.y0 = int(max(self.y - block_size[1] / 2, 0))
+        self.y1 = int(min(self.y + block_size[1] / 2, video_res[1] - 1))
+        self.x0 = int(max(self.x_min - block_size[0] / 2, 0))
+        self.x1 = int(min(self.x_max + block_size[0] / 2, video_res[0] - 1))
+
+        slider_row = frame[self.y0:self.y1, self.x0:self.x1]
+
+        self.slider_coord = self.get_slider_coord(slider_row)
+
+        if self.slider_coord:
+            slider_x_max = self.x1 - self.x0 - block_size[0]
+            slider_value = min(max(
+                (self.slider_coord[0] - block_size[0] / 2) / slider_x_max, 0), 1)
+            # round according to step_size
+            return float(
+                decimal.Decimal(slider_value).quantize(self.step_size, decimal.ROUND_HALF_UP))
+
+    def draw(self, frame):
+        '''Draw slider range and current location onto image'''
+        cv2.line(frame, (self.x_min, self.y), (self.x_max, self.y), WHITE, 2)
+
+        if self.slider_coord:
+            cv2.line(frame,
+                     (self.x0 + self.slider_coord[0], self.y0 + self.slider_coord[1] - 20),
+                     (self.x0 + self.slider_coord[0], self.y0 + self.slider_coord[1] + 20),
+                     WHITE, 8)
+
+    def get_slider_coord(self, frame):
+        '''Get x,y of slider position in frame. Any black blob is considered a slider'''
+        # find contours
+        kernel = np.ones((7, 7), np.uint8)
+        mask = cv2.morphologyEx(frame, cv2.MORPH_CLOSE, kernel)
+        contours, _ = cv2.findContours(mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+
+        # get centroid of first contour
+        centroid = None
+        if len(contours) > 0:
+            moments = cv2.moments(contours[0])
+            if moments['m00'] > 0:
+                centroid = (int(moments['m10'] / moments['m00']),
+                            int(moments['m01'] / moments['m00']))
+
+        return centroid
