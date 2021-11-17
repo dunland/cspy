@@ -85,6 +85,10 @@ class Cityscopy:
         self.gain = self.table_settings['realsense']['gain']
         self.using_realsense = self.table_settings['realsense']['active']
 
+        # setup camera
+        if self.using_realsense:
+            self.realsense_init()
+
         # tags
         self.tag_length = self.table_settings.get('tag_length', 4)
         self.width = int(math.sqrt(self.tag_length))
@@ -133,6 +137,7 @@ class Cityscopy:
             print("sending at UDP %s:%s" % (self.UDP_IP, self.UDP_PORT))
         else:
             device_product_line = connected_devices[0]
+            self.UDP_PORT = 5000
         config.enable_device(device_product_line)
 
         # Get device product line for setting a supporting resolution
@@ -201,11 +206,7 @@ class Cityscopy:
         # serial num of camera, to switch between cameras
         camPos = self.table_settings['cam_id']
 
-        # try from a device 1 in list, not default webcam
-        if self.using_realsense:
-            self.realsense_init()
-            # video_capture = self.pipeline
-        else:
+        if not self.using_realsense:
             video_capture = cv2.VideoCapture(camPos)
 
         if self.using_realsense:
@@ -378,7 +379,7 @@ class Cityscopy:
                 last_sent = datetime.now()
 
                 # debug print
-                print('CityScopy grid sent at:', datetime.now())
+                print('CityScopy grid sent at:', datetime.now(), "via %s:%s" % (self.UDP_IP, self.UDP_PORT))
 
     def send_json_to_UDP(self, scan_results):
         slider_val = self.mp_shared_dict['sliders']
@@ -562,8 +563,6 @@ class Cityscopy:
         # try from a device 1 in list, not default webcam
         if not self.using_realsense:
             WEBCAM = cv2.VideoCapture(camPos)
-        else:
-            self.realsense_init()
 
         time.sleep(1)
 
