@@ -269,6 +269,9 @@ class Cityscopy:
             # convert input to LAB colour space
             lab_image = cv2.cvtColor(keystoned_video, cv2.COLOR_BGR2LAB)
 
+            # uncomment this to show intermediate image
+            # cv2.imshow("lab_image", lab_image)
+
             # get L/a/b channels
             ch_l, ch_a, ch_b = cv2.split(lab_image)
 
@@ -276,6 +279,9 @@ class Cityscopy:
             binary_image = np.where(
                 (ch_l <= self.max_l) & (ch_a <= self.max_a) & (ch_b <= self.max_b), 255, 0
                 ).astype(np.uint8)
+
+            # uncomment this to show intermediate image
+            # cv2.imshow("binary_image", binary_image)
 
             # get slider values
             mp_shared_dict['sliders'] = {
