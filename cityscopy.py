@@ -109,17 +109,28 @@ class Cityscopy:
         # Configure depth and color streams
         self.pipeline = rs.pipeline()
         config = rs.config()
+        realsense_ctx = rs.context()
+        connected_devices = []
+
+        for i in range(len(realsense_ctx.devices)):
+            detected_camera = realsense_ctx.devices[i].get_info(
+                rs.camera_info.serial_number)
+            connected_devices.append(detected_camera)
+
+        # choose device if more than 1 connected:
+        if len(connected_devices) > 1:
+            print("choose device by pressing the number:")
+            for i in range(len(realsense_ctx.devices)):
+                print("[%s]: %s @ %s" % (i, realsense_ctx.devices[i].get_info(rs.camera_info.name), realsense_ctx.devices[i].get_info(rs.camera_info.physical_port)))
+            idx = int(input(">>> "))
+            device_product_line = connected_devices[idx]
+        else:
+            device_product_line = connected_devices[0]
+        config.enable_device(device_product_line)
 
         # Get device product line for setting a supporting resolution
         pipeline_wrapper = rs.pipeline_wrapper(self.pipeline)
         pipeline_profile = config.resolve(pipeline_wrapper)
-        self.device = pipeline_profile.get_device()
-        device_product_line = self.device.get_info(rs.camera_info.product_line)
-        print("using Intel Realsense", device_product_line)
-
-        self.device = pipeline_profile.get_device().first_color_sensor()
-        self.device.set_option(rs.option.exposure, self.exposure)
-        self.device.set_option(rs.option.gain, self.gain)
 
         # Start streaming
         try:
@@ -141,6 +152,11 @@ class Cityscopy:
             config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
             print("streaming in 640x480...", end=" ")
             self.pipeline.start(config)
+
+        # set sensitivity parameters:
+        self.device = pipeline_profile.get_device().first_color_sensor()
+        self.device.set_option(rs.option.exposure, self.exposure)
+        self.device.set_option(rs.option.gain, self.gain)
 
         print("success!")
         print("Realsense initialization complete.")
