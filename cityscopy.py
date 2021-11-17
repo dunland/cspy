@@ -72,6 +72,10 @@ class Cityscopy:
         with open(path) as settings:
             self.table_settings = json.load(settings)
 
+        # communication
+        self.UDP_IP = "127.0.0.1"
+        self.UDP_PORT = 5000
+
         # init corners variables
         self.selected_corner = None
         self.magnitude = 1
@@ -81,6 +85,7 @@ class Cityscopy:
         self.gain = self.table_settings['realsense']['gain']
         self.using_realsense = self.table_settings['realsense']['active']
 
+        # tags
         self.tag_length = self.table_settings.get('tag_length', 4)
         self.width = int(math.sqrt(self.tag_length))
         self.tags = self.table_settings['tags']
@@ -124,6 +129,8 @@ class Cityscopy:
                 print("[%s]: %s @ %s" % (i, realsense_ctx.devices[i].get_info(rs.camera_info.name), realsense_ctx.devices[i].get_info(rs.camera_info.physical_port)))
             idx = int(input(">>> "))
             device_product_line = connected_devices[idx]
+            self.UDP_PORT = 5000 + idx
+            print("sending at UDP %s:%s" % (self.UDP_IP, self.UDP_PORT))
         else:
             device_product_line = connected_devices[0]
         config.enable_device(device_product_line)
@@ -378,12 +385,9 @@ class Cityscopy:
         json_dict = {'grid': scan_results, 'sliders': slider_val}
         json_string = json.dumps(json_dict)
 
-        # defining the udp endpoint
-        UDP_IP = "127.0.0.1"
-        UDP_PORT = 5000
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try:
-            sock.sendto(json_string.encode('utf-8'), (UDP_IP, UDP_PORT))
+            sock.sendto(json_string.encode('utf-8'), (self.UDP_IP, self.UDP_PORT))
         except Exception as e:
             print(e)
 
