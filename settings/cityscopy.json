@@ -3,15 +3,17 @@
     "ncols": 22,
     "cam_id": 0,
     "realsense": {
-        "active": true,
+        "active": false,
         "exposure:": 100,
         "gain": 2,
         "exposure": 478.0
     },
-    "max_l": 120,
+    "max_l": 80,
     "max_a": 255,
     "max_b": 132,
     "quantile": 0.3,
+    "gradient_max": 0,
+    "gradient_min": 0.8,
     "interval": 1000,
     "gui": true,
     "tag_length": 4,
@@ -27,9 +29,9 @@
         {
             "id": "slider0",
             "step_size": 0.01,
-            "x_min": 120,
-            "x_max": 730,
-            "y": 1066
+            "x_min": 100,
+            "x_max": 650,
+            "y": 1060
         }
     ],
     "mirror_cam": true,

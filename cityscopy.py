@@ -86,8 +86,8 @@ class Cityscopy:
         self.using_realsense = self.table_settings['realsense']['active']
 
         # gradient for uneven light compensation
-        self.gradient_min = 0.8
-        self.gradient_max = 0
+        self.gradient_min = self.table_settings['gradient_min']
+        self.gradient_max = self.table_settings['gradient_max']
 
         # setup camera
         if self.using_realsense:
