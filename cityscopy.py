@@ -219,8 +219,15 @@ class Cityscopy:
         else:
             video_res = (int(video_capture.get(3)), int(video_capture.get(4)))
 
-        # define the video window
+        # define the video windows
         cv2.namedWindow('scanner_gui_window', cv2.WINDOW_NORMAL)
+        cv2.resizeWindow('scanner_gui_window', 1920,1080)
+        cv2.namedWindow('binary_image', cv2.WINDOW_NORMAL)
+        cv2.namedWindow('gradient_map', cv2.WINDOW_NORMAL)
+        cv2.moveWindow('binary_image', 0,0)
+        cv2.moveWindow('gradient_map', 800,0)
+        cv2.resizeWindow('binary_image', 800,800)
+        cv2.resizeWindow('gradient_map', 800,800)
 
         # define the size for each scanner
         block_size = (video_res[0] / grid_dim[0], video_res[1] / grid_dim[1])
@@ -292,8 +299,7 @@ class Cityscopy:
                 ).astype(np.uint8)
 
             # uncomment these to show intermediate images
-            cv2.imshow("lab_image", lab_image)
-            # cv2.imshow("binary_image", binary_image)
+            cv2.imshow("binary_image", binary_image)
             cv2.imshow("gradient_map", gradient_map)
 
             # get slider values
@@ -351,8 +357,8 @@ class Cityscopy:
                             (50, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
                 cv2.putText(keystoned_video, "max_l: " + str(self.max_l) + " [+/-]",
                             (50, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
-                cv2.putText(keystoned_video, "gradient min:%2.1f max:%2.1f " % (self.gradient_min, self.gradient_max) + " [5,6 / 7,8]",
-                            (50, 130), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
+                cv2.putText(keystoned_video, "gradient min:%2.2f max:%2.2f " % (self.gradient_min, self.gradient_max) + " [5,6 / 7,8]",
+                            (50, 130), cv2.FONT_HERSHEY_SIMPLEX, 0.65, BLACK, 1, cv2.LINE_AA)
 
             # draw the video to screen
             cv2.imshow("scanner_gui_window", keystoned_video)
@@ -497,13 +503,13 @@ class Cityscopy:
                     self.init_keystone[3][1] -= self.magnitude
 
         elif key == '5':
-            self.gradient_max += self.magnitude / 10
+            self.gradient_min += self.magnitude / 100
         elif key == '6':
-            self.gradient_max -= self.magnitude / 10
+            self.gradient_min -= self.magnitude / 100
         elif key == '7':
-            self.gradient_min += self.magnitude / 10
+            self.gradient_max += self.magnitude / 100
         elif key == '8':
-            self.gradient_min -= self.magnitude / 10
+            self.gradient_max -= self.magnitude / 100
 
         # save to file
         elif key == 'k':
