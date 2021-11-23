@@ -283,17 +283,18 @@ class Cityscopy:
             ch_l_rows, ch_l_cols = ch_l.shape
             gradient_map = np.tile(np.linspace(self.gradient_min, self.gradient_max, ch_l_rows), (ch_l_cols, 1)).T
 
+            lab_image = np.multiply(lab_image, np.repeat(gradient_map, 3).reshape(lab_image.shape))
+            ch_l, ch_a, ch_b = cv2.split(lab_image)
+
             # reduce the colors based on a threshold
             binary_image = np.where(
                 (ch_l <= self.max_l) & (ch_a <= self.max_a) & (ch_b <= self.max_b), 255, 0
                 ).astype(np.uint8)
 
-            combined_image = np.multiply(binary_image, gradient_map)
-
             # uncomment these to show intermediate images
+            cv2.imshow("lab_image", lab_image)
             # cv2.imshow("binary_image", binary_image)
             cv2.imshow("gradient_map", gradient_map)
-            cv2.imshow("combined_image", combined_image)
 
             # get slider values
             mp_shared_dict['sliders'] = {
