@@ -85,6 +85,10 @@ class Cityscopy:
         self.gain = self.table_settings['realsense']['gain']
         self.using_realsense = self.table_settings['realsense']['active']
 
+        # gradient for uneven light compensation
+        self.gradient_min = 0.8
+        self.gradient_max = 0
+
         # setup camera
         if self.using_realsense:
             self.realsense_init()
@@ -275,13 +279,21 @@ class Cityscopy:
             # get L/a/b channels
             ch_l, ch_a, ch_b = cv2.split(lab_image)
 
+            # sensitivity gradient to compensate unevenly distributed light
+            ch_l_rows, ch_l_cols = ch_l.shape
+            gradient_map = np.tile(np.linspace(self.gradient_min, self.gradient_max, ch_l_rows), (ch_l_cols, 1)).T
+
             # reduce the colors based on a threshold
             binary_image = np.where(
                 (ch_l <= self.max_l) & (ch_a <= self.max_a) & (ch_b <= self.max_b), 255, 0
                 ).astype(np.uint8)
 
-            # uncomment this to show intermediate image
+            combined_image = np.multiply(binary_image, gradient_map)
+
+            # uncomment these to show intermediate images
             # cv2.imshow("binary_image", binary_image)
+            cv2.imshow("gradient_map", gradient_map)
+            cv2.imshow("combined_image", combined_image)
 
             # get slider values
             mp_shared_dict['sliders'] = {
@@ -338,6 +350,8 @@ class Cityscopy:
                             (50, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
                 cv2.putText(keystoned_video, "max_l: " + str(self.max_l) + " [+/-]",
                             (50, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
+                cv2.putText(keystoned_video, "gradient min:%2.1f max:%2.1f " % (self.gradient_min, self.gradient_max) + " [5,6 / 7,8]",
+                            (50, 130), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
 
             # draw the video to screen
             cv2.imshow("scanner_gui_window", keystoned_video)
@@ -480,6 +494,15 @@ class Cityscopy:
                     self.init_keystone[3][1] += self.magnitude
                 elif key == 's':
                     self.init_keystone[3][1] -= self.magnitude
+
+        elif key == '5':
+            self.gradient_max += self.magnitude / 10
+        elif key == '6':
+            self.gradient_max -= self.magnitude / 10
+        elif key == '7':
+            self.gradient_min += self.magnitude / 10
+        elif key == '8':
+            self.gradient_min -= self.magnitude / 10
 
         # save to file
         elif key == 'k':
