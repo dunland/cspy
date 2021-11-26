@@ -224,8 +224,8 @@ class Cityscopy:
         cv2.resizeWindow('scanner_gui_window', 1920,1080)
         cv2.namedWindow('binary_image', cv2.WINDOW_NORMAL)
         cv2.namedWindow('gradient_map', cv2.WINDOW_NORMAL)
-        cv2.moveWindow('binary_image', 0,0)
-        cv2.moveWindow('gradient_map', 800,0)
+        cv2.moveWindow('binary_image', 1921,0)
+        cv2.moveWindow('gradient_map', 2721,0)
         cv2.resizeWindow('binary_image', 800,800)
         cv2.resizeWindow('gradient_map', 800,800)
 
@@ -358,7 +358,7 @@ class Cityscopy:
                 cv2.putText(keystoned_video, "max_l: " + str(self.max_l) + " [+/-]",
                             (50, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
                 cv2.putText(keystoned_video, "gradient min:%2.2f max:%2.2f " % (self.gradient_min, self.gradient_max) + " [5,6 / 7,8]",
-                            (50, 130), cv2.FONT_HERSHEY_SIMPLEX, 0.65, BLACK, 1, cv2.LINE_AA)
+                            (50, 130), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
 
             # draw the video to screen
             cv2.imshow("scanner_gui_window", keystoned_video)
