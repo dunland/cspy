@@ -106,6 +106,9 @@ class Cityscopy:
         self.max_l = self.table_settings.get('max_l', 127)
         self.max_a = self.table_settings.get('max_a', 255)
         self.max_b = self.table_settings.get('max_b', 255)
+        self.slider_l = self.table_settings.get('slider_l', 127)
+        self.slider_a = self.table_settings.get('slider_a', 255)
+        self.slider_b = self.table_settings.get('slider_b', 255)
         self.quantile = self.table_settings.get('quantile', 0.5)
 
         self.sliders = [
@@ -301,12 +304,27 @@ class Cityscopy:
             # uncomment these to show intermediate images
             cv2.imshow("binary_image", binary_image)
             cv2.imshow("gradient_map", gradient_map)
+            # reduce the colors based on slider threshold
+            binary_image_slider = np.where(
+                (ch_l <= self.slider_l) & (ch_a <= self.slider_a) & (ch_b <= self.slider_b), 255, 0
+                ).astype(np.uint8)
+
+            # uncomment this to show intermediate image
+            # cv2.imshow("binary_image_slider", binary_image_slider)
 
             # get slider values
             mp_shared_dict['sliders'] = {
-                slider.id: slider.evaluate(binary_image, video_res, block_size)
+                slider.id: slider.evaluate(binary_image_slider, video_res, block_size)
                 for slider in self.sliders
             }
+
+            # reduce the colors based on a threshold
+            binary_image = np.where(
+                (ch_l <= self.max_l) & (ch_a <= self.max_a) & (ch_b <= self.max_b), 255, 0
+                ).astype(np.uint8)
+
+            # uncomment this to show intermediate image
+            # cv2.imshow("binary_image", binary_image)
 
             # run through coordinates and analyse each image
             for x, y in scanner_points:
@@ -359,6 +377,8 @@ class Cityscopy:
                             (50, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
                 cv2.putText(keystoned_video, "gradient min:%2.2f max:%2.2f " % (self.gradient_min, self.gradient_max) + " [5,6 / 7,8]",
                             (50, 130), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
+                cv2.putText(keystoned_video, "slider_l: " + str(self.slider_l) + " [</>]",
+                            (50, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
 
             # draw the video to screen
             cv2.imshow("scanner_gui_window", keystoned_video)
@@ -443,7 +463,7 @@ class Cityscopy:
         move_keys = ['w', 'a', 's', 'd']
         realsense_keys = ['e', 'r', 'g', 'h']
         bgr_threshold_keys = ['+', '-']
-
+        slider_threshold_keys = ['<','>']
         key = chr(cv2.waitKey(1) & 255)
 
         if key == ' ':
@@ -457,6 +477,14 @@ class Cityscopy:
             elif key == '-':
                 self.max_l -= self.magnitude
                 print("luminance threshold at ", self.max_l)
+
+        elif key in slider_threshold_keys:
+            if key == '<':
+                self.slider_l += self.magnitude
+                print("slider luminance threshold at ", self.slider_l)
+            elif key == '>':
+                self.slider_l -= self.magnitude
+                print("slider luminance threshold at ", self.slider_l)
 
         elif key in corner_keys:
             self.selected_corner = key
