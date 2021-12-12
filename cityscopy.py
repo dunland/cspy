@@ -111,9 +111,16 @@ class Cityscopy:
         self.slider_b = self.table_settings.get('slider_b', 255)
         self.quantile = self.table_settings.get('quantile', 0.5)
 
-        self.sliders = [
-            Slider(options) for options in self.table_settings.get('sliders', [])
-        ]
+        if not self.using_realsense:
+            video_capture = cv2.VideoCapture(self.table_settings['cam_id'])
+            video_res = (int(video_capture.get(3)), int(video_capture.get(4)))
+            self.sliders = [
+                Slider(options, video_res) for options in self.table_settings.get('sliders', [])
+            ]
+        else:
+            self.sliders = [
+                Slider(options) for options in self.table_settings.get('sliders', [])
+            ]
 
         # init keystone variables
         self.FRAME = None
@@ -375,7 +382,7 @@ class Cityscopy:
                             (50, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
                 cv2.putText(keystoned_video, "max_l: " + str(self.max_l) + " [+/-]",
                             (50, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
-                cv2.putText(keystoned_video, "gradient min:%2.2f max:%2.2f " % (self.gradient_min, self.gradient_max) + " [5,6 / 7,8]",
+                cv2.putText(keystoned_video, "grad2ient min:%2.2f max:%2.2f " % (self.gradient_min, self.gradient_max) + " [5,6 / 7,8]",
                             (50, 130), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
                 cv2.putText(keystoned_video, "slider_l: " + str(self.slider_l) + " [</>]",
                             (50, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
@@ -702,18 +709,24 @@ class Cityscopy:
 
 
 class Slider:
-    def __init__(self, config):
+    def __init__(self, config, video_res):
         '''Set up a slider instance'''
         self.id = config['id']
         self.step_size = decimal.Decimal(str(config['step_size']))
         self.y = config['y']          # y location (center)
         self.x_min = config['x_min']  # x location of minimum slider position (centroid)
         self.x_max = config['x_max']  # x location of maximum slider position (centroid)
+        # if video res is smaller than 1920x1080, calculate the slider according to its ratio
+        if video_res is not None and video_res[1] < 1080:
+            self.y = int(self.y/1080*video_res[1])
+            self.x_min = int(self.x_min/1920*video_res[0])
+            self.x_max = int(self.x_max/1920*video_res[0])
 
     def evaluate(self, frame, video_res, block_size):
         '''Extract slider value from the original image.
 
         The slider tag should be as large as block_size.'''
+
         self.y0 = int(max(self.y - block_size[1] / 2, 0))
         self.y1 = int(min(self.y + block_size[1] / 2, video_res[1] - 1))
         self.x0 = int(max(self.x_min - block_size[0] / 2, 0))
