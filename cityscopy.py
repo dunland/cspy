@@ -240,7 +240,7 @@ class Cityscopy:
         cv2.resizeWindow('gradient_map', 800,800)
 
         # define the size for each scanner
-        block_size = (video_res[0] / grid_dim[0], video_res[1] / grid_dim[1])
+        block_size = (video_res[0] / grid_dim[0], self.sliders[0].y / (grid_dim[1] + 1/2))
         codepoint_size = (block_size[0] / self.width, block_size[1] / self.width)
 
         # get coordinates for scanners (top left corner of each area)
