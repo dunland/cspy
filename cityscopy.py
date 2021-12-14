@@ -248,7 +248,9 @@ class Cityscopy:
             total_slider_y += slider.y;
 
         # define the size for each scanner
-        block_size = (video_res[0] / grid_dim[0], self.sliders[0].y / (grid_dim[1] + 1/2))
+        dynamic_x = int(self.table_settings['grid_w']/1920 * video_res[0])
+        dynamic_y = int(self.table_settings['grid_h']/1080 * video_res[1])
+        block_size = (dynamic_x / grid_dim[0], dynamic_y / (grid_dim[1]))
         codepoint_size = (block_size[0] / self.width, block_size[1] / self.width)
 
         # get coordinates for scanners (top left corner of each area)

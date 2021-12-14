@@ -1,6 +1,8 @@
 {
     "nrows": 20,
     "ncols": 22,
+    "grid_w": 1920,
+    "grid_h": 1033,
     "cam_id": 0,
     "realsense": {
         "active": false,
