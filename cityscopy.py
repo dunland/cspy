@@ -91,7 +91,11 @@ class Cityscopy:
 
         # setup camera
         if self.using_realsense:
-            self.realsense_init()
+            try:
+                self.realsense_init()
+            except Exception:
+                print("cannot load realsense. Not connected?")
+                self.using_realsense = False
 
         # tags
         self.tag_length = self.table_settings.get('tag_length', 4)
@@ -379,6 +383,8 @@ class Cityscopy:
                             (50, 130), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
                 cv2.putText(keystoned_video, "slider_l: " + str(self.slider_l) + " [</>]",
                             (50, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
+                cv2.putText(keystoned_video, "quantile: %2.2f" % self.quantile + " [y/x]",
+                            (50, 170), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
 
             # draw the video to screen
             cv2.imshow("scanner_gui_window", keystoned_video)
@@ -538,6 +544,10 @@ class Cityscopy:
             self.gradient_max += self.magnitude / 100
         elif key == '8':
             self.gradient_max -= self.magnitude / 100
+        elif key == 'y':
+            self.quantile += self.magnitude / 100
+        elif key == 'x':
+            self.quantile -= self.magnitude / 100
 
         # save to file
         elif key == 'k':
