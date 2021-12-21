@@ -122,8 +122,11 @@ class Cityscopy:
                 Slider(options, video_res) for options in self.table_settings.get('sliders', [])
             ]
         else:
+            video_res = (int(self.pipeline.wait_for_frames().get_color_frame().get_width()),
+                         int(self.pipeline.wait_for_frames().get_color_frame().get_height()))
+
             self.sliders = [
-                Slider(options) for options in self.table_settings.get('sliders', [])
+                Slider(options, video_res) for options in self.table_settings.get('sliders', [])
             ]
 
         # init keystone variables
