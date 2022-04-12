@@ -154,11 +154,11 @@ class Cityscopy:
                 print("[%s]: %s @ %s" % (i, realsense_ctx.devices[i].get_info(rs.camera_info.name), realsense_ctx.devices[i].get_info(rs.camera_info.physical_port)))
             idx = self.table_settings['realsense']['device_num']
             device_product_line = connected_devices[idx]
-            
+
             print("sending at UDP %s:%s" % (self.UDP_IP, self.UDP_PORT))
         else:
             device_product_line = connected_devices[0]
-            
+
         config.enable_device(device_product_line)
 
         # Get device product line for setting a supporting resolution
@@ -248,7 +248,7 @@ class Cityscopy:
 
         total_slider_y = 0
         for slider in self.sliders:
-            total_slider_y += slider.y;
+            total_slider_y += slider.y
 
         # define the size for each scanner
         dynamic_x = int(self.table_settings['grid_w']/1920 * video_res[0])
@@ -267,6 +267,7 @@ class Cityscopy:
                 ])
 
         previous_colors = []
+        previous_slider_value = 0
 
         # run the video loop forever
         while True:
@@ -337,6 +338,10 @@ class Cityscopy:
                 slider.id: slider.evaluate(binary_image_slider, video_res, block_size)
                 for slider in self.sliders
             }
+
+            # send json if slider changed:
+            if mp_shared_dict['sliders'] != previous_slider_value:
+                self.send_json_to_UDP(mp_shared_dict['scan'])
 
             # reduce the colors based on a threshold
             binary_image = np.where(
