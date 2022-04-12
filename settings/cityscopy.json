@@ -1,24 +1,26 @@
 {
-    "nrows": 20,
+    "PORT": 5000,
+    "nrows": 18,
     "ncols": 22,
     "grid_w": 1920,
-    "grid_h": 1033,
+    "grid_h": 900,
     "cam_id": 0,
     "realsense": {
-        "active": false,
+        "device_num" : 0,
+        "active": true,
         "exposure:": 100,
         "gain": 2,
         "exposure": 478.0
     },
-    "max_l": 80,
+    "max_l": 70,
     "max_a": 255,
     "max_b": 132,
-    "slider_l": 100,
+    "slider_l": 74,
     "slider_a": 255,
     "slider_b": 132,
-    "quantile": 0.3,
+    "quantile": 0.46,
     "gradient_min": 1.0,
-    "gradient_max": 0.7,
+    "gradient_max": 0.5,
     "interval": 1000,
     "gui": true,
     "tag_length": 4,
@@ -34,9 +36,9 @@
         {
             "id": "slider0",
             "step_size": 0.01,
-            "x_min": 100,
-            "x_max": 650,
-            "y": 1060
+            "x_min": 85,
+            "x_max": 775,
+            "y": 972
         }
     ],
     "mirror_cam": true,

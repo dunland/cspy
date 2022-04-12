@@ -74,7 +74,7 @@ class Cityscopy:
 
         # communication
         self.UDP_IP = "127.0.0.1"
-        self.UDP_PORT = 5000
+        self.UDP_PORT = self.table_settings['PORT']
 
         # init corners variables
         self.selected_corner = None
@@ -152,13 +152,13 @@ class Cityscopy:
             print("choose device by pressing the number:")
             for i in range(len(realsense_ctx.devices)):
                 print("[%s]: %s @ %s" % (i, realsense_ctx.devices[i].get_info(rs.camera_info.name), realsense_ctx.devices[i].get_info(rs.camera_info.physical_port)))
-            idx = int(input(">>> "))
+            idx = self.table_settings['realsense']['device_num']
             device_product_line = connected_devices[idx]
-            self.UDP_PORT = 5000 + idx
+            
             print("sending at UDP %s:%s" % (self.UDP_IP, self.UDP_PORT))
         else:
             device_product_line = connected_devices[0]
-            self.UDP_PORT = 5000
+            
         config.enable_device(device_product_line)
 
         # Get device product line for setting a supporting resolution
