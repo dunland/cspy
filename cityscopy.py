@@ -342,6 +342,7 @@ class Cityscopy:
             # send json if slider changed:
             if mp_shared_dict['sliders'] != previous_slider_value:
                 self.send_json_to_UDP(mp_shared_dict['scan'])
+                previous_slider_value = mp_shared_dict['sliders']
 
             # reduce the colors based on a threshold
             binary_image = np.where(
