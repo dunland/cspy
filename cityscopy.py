@@ -115,6 +115,8 @@ class Cityscopy:
         self.slider_b = self.table_settings.get('slider_b', 255)
         self.quantile = self.table_settings.get('quantile', 0.5)
 
+        self.slider_last_sent = datetime.now()
+
         if not self.using_realsense:
             video_capture = cv2.VideoCapture(self.table_settings['cam_id'])
             video_res = (int(video_capture.get(3)), int(video_capture.get(4)))
@@ -341,8 +343,14 @@ class Cityscopy:
 
             # send json if slider changed:
             if mp_shared_dict['sliders'] != previous_slider_value:
-                self.send_json_to_UDP(mp_shared_dict['scan'])
-                previous_slider_value = mp_shared_dict['sliders']
+                SEND_INTERVAL = self.table_settings['interval']
+                SEND_INTERVAL = timedelta(milliseconds=SEND_INTERVAL)
+
+                if datetime.now() > self.slider_last_sent + SEND_INTERVAL:
+                    self.send_json_to_UDP(mp_shared_dict['scan'])
+                    previous_slider_value = mp_shared_dict['sliders']
+
+                    self.slider_last_sent = datetime.now()
 
             # reduce the colors based on a threshold
             binary_image = np.where(
