@@ -342,7 +342,7 @@ class Cityscopy:
             }
 
             # send json if slider changed:
-            if mp_shared_dict['sliders'] != previous_slider_value:
+            if mp_shared_dict['sliders'] != previous_slider_value and mp_shared_dict['sliders'] is not None:
                 SEND_INTERVAL = self.table_settings['interval']
                 SEND_INTERVAL = timedelta(milliseconds=SEND_INTERVAL)
 
