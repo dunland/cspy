@@ -1,6 +1,6 @@
 {
     "PORT": 5000,
-    "nrows": 18,
+    "nrows": 19,
     "ncols": 22,
     "grid_w": 1920,
     "grid_h": 900,
