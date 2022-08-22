@@ -236,6 +236,13 @@ class Cityscopy:
                 ])
 
         previous_colors = []
+        previous_slider_value = {slider.id : 0 for slider in self.sliders}
+        evaluate_slider = {slider.id : True for slider in self.sliders} 
+        reevaluate_slider = {slider.id : False for slider in self.sliders}
+        slider_eval_time = {slider.id : 0 for slider in self.sliders}
+        value_eval_time = {slider.id : 0 for slider in self.sliders}
+
+        print(slider_eval_time)
 
         # run the video loop forever
         while True:
@@ -291,6 +298,39 @@ class Cityscopy:
                 slider.id: slider.evaluate(binary_image_slider, video_res, block_size)
                 for slider in self.sliders
             }
+
+            # send json if slider changed:
+            # if (val_now != previous_val):
+            #     eval_time = now()
+            #     eval = True
+            #     save_val = val_now
+
+            # if now() > eval_time + 1000:
+            #     if val_now is save_val:
+            #         send_message()
+            #         eval = False
+
+            # try: 
+            for slider, value in mp_shared_dict['sliders'].items():
+                # first evaluation:
+                if evaluate_slider[slider] and value != previous_slider_value[slider] and value is not None:
+                    slider_eval_time[slider] = datetime.now()  # remember time of first slider evaluation
+                    value_eval_time[slider] = value  # remember value of first slider evaluation
+                    reevaluate_slider[slider] = True  # start comparing old and new value
+                    evaluate_slider[slider] = False  # stop slider evaluation
+
+                # second evaluation:
+                if reevaluate_slider[slider] and datetime.now() > slider_eval_time[slider] + timedelta(milliseconds=self.table_settings['interval']):
+                    if value == value_eval_time[slider]:
+                        self.send_json_to_UDP(mp_shared_dict['scan'])  # send message
+                        previous_slider_value[slider] = value  # remember value
+                        print('slider val {0}:{1} sent '.format(slider, value), datetime.now(), "via %s:%s" % (self.UDP_IP, self.UDP_PORT))
+                        
+                    reevaluate_slider[slider] = False  # stop re-evaluating
+                    evaluate_slider[slider] = True  # start evaluation
+
+            # except Exception as e:
+            #     print("Error!", e)
 
             # reduce the colors based on a threshold
             binary_image = np.where(
