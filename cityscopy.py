@@ -74,7 +74,7 @@ class Cityscopy:
 
         # communication
         self.UDP_IP = "127.0.0.1"
-        self.UDP_PORT = 5000
+        self.UDP_PORT = self.table_settings['PORT']
 
         # init corners variables
         self.selected_corner = None
@@ -85,9 +85,17 @@ class Cityscopy:
         self.gain = self.table_settings['realsense']['gain']
         self.using_realsense = self.table_settings['realsense']['active']
 
+        # gradient for uneven light compensation
+        self.gradient_min = self.table_settings['gradient_min']
+        self.gradient_max = self.table_settings['gradient_max']
+
         # setup camera
         if self.using_realsense:
-            self.realsense_init()
+            try:
+                self.realsense_init()
+            except Exception:
+                print("cannot load realsense. Not connected?")
+                self.using_realsense = False
 
         # tags
         self.tag_length = self.table_settings.get('tag_length', 4)
@@ -107,9 +115,21 @@ class Cityscopy:
         self.slider_b = self.table_settings.get('slider_b', 255)
         self.quantile = self.table_settings.get('quantile', 0.5)
 
-        self.sliders = [
-            Slider(options) for options in self.table_settings.get('sliders', [])
-        ]
+        self.slider_last_sent = datetime.now()
+
+        if not self.using_realsense:
+            video_capture = cv2.VideoCapture(self.table_settings['cam_id'])
+            video_res = (int(video_capture.get(3)), int(video_capture.get(4)))
+            self.sliders = [
+                Slider(options, video_res) for options in self.table_settings.get('sliders', [])
+            ]
+        else:
+            video_res = (int(self.pipeline.wait_for_frames().get_color_frame().get_width()),
+                         int(self.pipeline.wait_for_frames().get_color_frame().get_height()))
+
+            self.sliders = [
+                Slider(options, video_res) for options in self.table_settings.get('sliders', [])
+            ]
 
         # init keystone variables
         self.FRAME = None
@@ -134,13 +154,13 @@ class Cityscopy:
             print("choose device by pressing the number:")
             for i in range(len(realsense_ctx.devices)):
                 print("[%s]: %s @ %s" % (i, realsense_ctx.devices[i].get_info(rs.camera_info.name), realsense_ctx.devices[i].get_info(rs.camera_info.physical_port)))
-            idx = int(input(">>> "))
+            idx = self.table_settings['realsense']['device_num']
             device_product_line = connected_devices[idx]
-            self.UDP_PORT = 5000 + idx
+
             print("sending at UDP %s:%s" % (self.UDP_IP, self.UDP_PORT))
         else:
             device_product_line = connected_devices[0]
-            self.UDP_PORT = 5000
+
         config.enable_device(device_product_line)
 
         # Get device product line for setting a supporting resolution
@@ -218,11 +238,24 @@ class Cityscopy:
         else:
             video_res = (int(video_capture.get(3)), int(video_capture.get(4)))
 
-        # define the video window
+        # define the video windows
         cv2.namedWindow('scanner_gui_window', cv2.WINDOW_NORMAL)
+        cv2.resizeWindow('scanner_gui_window', 1920,1080)
+        cv2.namedWindow('binary_image', cv2.WINDOW_NORMAL)
+        cv2.namedWindow('gradient_map', cv2.WINDOW_NORMAL)
+        cv2.moveWindow('binary_image', 1921,0)
+        cv2.moveWindow('gradient_map', 2721,0)
+        cv2.resizeWindow('binary_image', 800,800)
+        cv2.resizeWindow('gradient_map', 800,800)
+
+        total_slider_y = 0
+        for slider in self.sliders:
+            total_slider_y += slider.y
 
         # define the size for each scanner
-        block_size = (video_res[0] / grid_dim[0], video_res[1] / grid_dim[1])
+        dynamic_x = int(self.table_settings['grid_w']/1920 * video_res[0])
+        dynamic_y = int(self.table_settings['grid_h']/1080 * video_res[1])
+        block_size = (dynamic_x / grid_dim[0], dynamic_y / (grid_dim[1]))
         codepoint_size = (block_size[0] / self.width, block_size[1] / self.width)
 
         # get coordinates for scanners (top left corner of each area)
@@ -285,6 +318,21 @@ class Cityscopy:
             # get L/a/b channels
             ch_l, ch_a, ch_b = cv2.split(lab_image)
 
+            # sensitivity gradient to compensate unevenly distributed light
+            ch_l_rows, ch_l_cols = ch_l.shape
+            gradient_map = np.tile(np.linspace(self.gradient_min, self.gradient_max, ch_l_rows), (ch_l_cols, 1)).T
+
+            lab_image = np.multiply(lab_image, np.repeat(gradient_map, 3).reshape(lab_image.shape))
+            ch_l, ch_a, ch_b = cv2.split(lab_image)
+
+            # reduce the colors based on a threshold
+            binary_image = np.where(
+                (ch_l <= self.max_l) & (ch_a <= self.max_a) & (ch_b <= self.max_b), 255, 0
+                ).astype(np.uint8)
+
+            # uncomment these to show intermediate images
+            cv2.imshow("binary_image", binary_image)
+            cv2.imshow("gradient_map", gradient_map)
             # reduce the colors based on slider threshold
             binary_image_slider = np.where(
                 (ch_l <= self.slider_l) & (ch_a <= self.slider_a) & (ch_b <= self.slider_b), 255, 0
@@ -389,8 +437,12 @@ class Cityscopy:
                             (50, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
                 cv2.putText(keystoned_video, "max_l: " + str(self.max_l) + " [+/-]",
                             (50, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
+                cv2.putText(keystoned_video, "grad2ient min:%2.2f max:%2.2f " % (self.gradient_min, self.gradient_max) + " [5,6 / 7,8]",
+                            (50, 130), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
                 cv2.putText(keystoned_video, "slider_l: " + str(self.slider_l) + " [</>]",
                             (50, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
+                cv2.putText(keystoned_video, "quantile: %2.2f" % self.quantile + " [y/x]",
+                            (50, 170), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
 
             # draw the video to screen
             cv2.imshow("scanner_gui_window", keystoned_video)
@@ -541,6 +593,19 @@ class Cityscopy:
                     self.init_keystone[3][1] += self.magnitude
                 elif key == 's':
                     self.init_keystone[3][1] -= self.magnitude
+
+        elif key == '5':
+            self.gradient_min += self.magnitude / 100
+        elif key == '6':
+            self.gradient_min -= self.magnitude / 100
+        elif key == '7':
+            self.gradient_max += self.magnitude / 100
+        elif key == '8':
+            self.gradient_max -= self.magnitude / 100
+        elif key == 'y':
+            self.quantile += self.magnitude / 100
+        elif key == 'x':
+            self.quantile -= self.magnitude / 100
 
         # save to file
         elif key == 'k':
@@ -705,18 +770,24 @@ class Cityscopy:
 
 
 class Slider:
-    def __init__(self, config):
+    def __init__(self, config, video_res):
         '''Set up a slider instance'''
         self.id = config['id']
         self.step_size = decimal.Decimal(str(config['step_size']))
         self.y = config['y']          # y location (center)
         self.x_min = config['x_min']  # x location of minimum slider position (centroid)
         self.x_max = config['x_max']  # x location of maximum slider position (centroid)
+        # if video res is smaller than 1920x1080, calculate the slider according to its ratio
+        if video_res is not None and video_res[1] < 1080:
+            self.y = int(self.y/1080*video_res[1])
+            self.x_min = int(self.x_min/1920*video_res[0])
+            self.x_max = int(self.x_max/1920*video_res[0])
 
     def evaluate(self, frame, video_res, block_size):
         '''Extract slider value from the original image.
 
         The slider tag should be as large as block_size.'''
+
         self.y0 = int(max(self.y - block_size[1] / 2, 0))
         self.y1 = int(min(self.y + block_size[1] / 2, video_res[1] - 1))
         self.x0 = int(max(self.x_min - block_size[0] / 2, 0))

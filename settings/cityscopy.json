@@ -2,6 +2,8 @@
     "PORT": 5001,
     "nrows": 19,
     "ncols": 22,
+    "grid_w": 1920,
+    "grid_h": 900,
     "cam_id": 0,
     "realsense": {
         "device_num" : 1,
