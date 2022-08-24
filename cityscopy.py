@@ -49,8 +49,8 @@ of uniquely tagged LEGO array
 ##################################################
 '''
 
-
-import requests
+import math
+import decimal
 import cv2
 import numpy as np
 from datetime import timedelta
@@ -60,26 +60,76 @@ import json
 import os
 import socket
 from multiprocessing import Process, Manager
-import random
 import pyrealsense2 as rs
+
+BLACK = (0, 0, 0)
+WHITE = (255, 255, 255)
 
 
 class Cityscopy:
-    '''sacnner for CityScope'''
-
-    ##################################################
-
     def __init__(self, path):
-        '''init function '''
         # load info from json file
-        self.SETTINGS_PATH = path
-        # get the table settings. This is used bu many metohds
-        self.table_settings = self.parse_json_file('cityscopy')
-        print('getting settings for CityScopy...')
+        with open(path) as settings:
+            self.table_settings = json.load(settings)
+
+        # communication
+        self.UDP_IP = "127.0.0.1"
+        self.UDP_PORT = self.table_settings['PORT']
 
         # init corners variables
         self.selected_corner = None
-        self.corner_direction = None
+        self.magnitude = 1
+
+        # realsense camera parameters
+        self.exposure = self.table_settings['realsense']['exposure']
+        self.gain = self.table_settings['realsense']['gain']
+        self.using_realsense = self.table_settings['realsense']['active']
+
+        # gradient for uneven light compensation
+        self.gradient_min = self.table_settings['gradient_min']
+        self.gradient_max = self.table_settings['gradient_max']
+
+        # setup camera
+        if self.using_realsense:
+            try:
+                self.realsense_init()
+            except Exception:
+                print("cannot load realsense. Not connected?")
+                self.using_realsense = False
+
+        # tags
+        self.tag_length = self.table_settings.get('tag_length', 4)
+        self.width = int(math.sqrt(self.tag_length))
+        self.tags = self.table_settings['tags']
+        self.tags_np = np.int8([[int(b) for b in tag] for tag in self.tags])
+
+        for tag in self.tags:
+            assert len(tag) == self.tag_length
+
+        # color conversion thresholds
+        self.max_l = self.table_settings.get('max_l', 127)
+        self.max_a = self.table_settings.get('max_a', 255)
+        self.max_b = self.table_settings.get('max_b', 255)
+        self.slider_l = self.table_settings.get('slider_l', 127)
+        self.slider_a = self.table_settings.get('slider_a', 255)
+        self.slider_b = self.table_settings.get('slider_b', 255)
+        self.quantile = self.table_settings.get('quantile', 0.5)
+
+        self.slider_last_sent = datetime.now()
+
+        if not self.using_realsense:
+            video_capture = cv2.VideoCapture(self.table_settings['cam_id'])
+            video_res = (int(video_capture.get(3)), int(video_capture.get(4)))
+            self.sliders = [
+                Slider(options, video_res) for options in self.table_settings.get('sliders', [])
+            ]
+        else:
+            video_res = (int(self.pipeline.wait_for_frames().get_color_frame().get_width()),
+                         int(self.pipeline.wait_for_frames().get_color_frame().get_height()))
+
+            self.sliders = [
+                Slider(options, video_res) for options in self.table_settings.get('sliders', [])
+            ]
 
         # init keystone variables
         self.FRAME = None
@@ -87,411 +137,338 @@ class Cityscopy:
         self.POINTS = None
         self.MOUSE_POSITION = None
 
-    ##################################################
-
-    def print_cams(self):
-        print("reading first 100 cameras...")
-        index = 0
-        arr = []
-        for index in range(0, 100):
-            cap = cv2.VideoCapture(index)
-            # returns video frames; False if no frames have been grabbed
-            if cap.read()[0] != False:
-                arr.append(index)
-            cap.release()
-        print("found cameras: ", arr)
-
-    ##################################################
-
     def realsense_init(self):
         # Configure depth and color streams
         self.pipeline = rs.pipeline()
         config = rs.config()
+        realsense_ctx = rs.context()
+        connected_devices = []
+
+        for i in range(len(realsense_ctx.devices)):
+            detected_camera = realsense_ctx.devices[i].get_info(
+                rs.camera_info.serial_number)
+            connected_devices.append(detected_camera)
+
+        # choose device if more than 1 connected:
+        if len(connected_devices) > 1:
+            print("choose device by pressing the number:")
+            for i in range(len(realsense_ctx.devices)):
+                print("[%s]: %s @ %s" % (i, realsense_ctx.devices[i].get_info(rs.camera_info.name), realsense_ctx.devices[i].get_info(rs.camera_info.physical_port)))
+            idx = self.table_settings['realsense']['device_num']
+            device_product_line = connected_devices[idx]
+
+            print("sending at UDP %s:%s" % (self.UDP_IP, self.UDP_PORT))
+        else:
+            device_product_line = connected_devices[0]
+
+        config.enable_device(device_product_line)
 
         # Get device product line for setting a supporting resolution
         pipeline_wrapper = rs.pipeline_wrapper(self.pipeline)
         pipeline_profile = config.resolve(pipeline_wrapper)
-        self.device = pipeline_profile.get_device()
-        device_product_line = str(self.device.get_info(rs.camera_info.product_line))
-        print("using Intel Realsense", device_product_line)
-
-        self.device = pipeline_profile.get_device().first_color_sensor()
-        self.device.set_option(rs.option.exposure, 166)
-        self.device.set_option(rs.option.gain, 64)
 
         # Start streaming
         try:
             # setup for USB 3
-            config.enable_stream(rs.stream.color, 1280, 720, rs.format.bgr8, 30)
-            self.pipeline.start(config)
-        except:
+            try:
+                config.enable_stream(rs.stream.color, 1920,
+                                     1080, rs.format.bgr8, 30)
+                print("trying to stream 1920x1080...", end=" ")
+                self.pipeline.start(config)
+            except Exception:
+                print("no success.")
+                config.enable_stream(rs.stream.color, 1280,
+                                     720, rs.format.bgr8, 30)
+                print("trying to stream 1280x720...", end=" ")
+                self.pipeline.start(config)
+        except Exception:
             # setup for USB 2
+            print("no success.")
             config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
+            print("streaming in 640x480...", end=" ")
             self.pipeline.start(config)
 
+        # set sensitivity parameters:
+        self.device = pipeline_profile.get_device().first_color_sensor()
+        self.device.set_option(rs.option.exposure, self.exposure)
+        self.device.set_option(rs.option.gain, self.gain)
+
+        print("success!")
         print("Realsense initialization complete.")
 
-    ##################################################
-
     def scan(self):
-
         # define global list manager
         MANAGER = Manager()
         # create shared global list to work with both processes
-        self.multiprocess_shared_dict = MANAGER.dict()
+        self.mp_shared_dict = MANAGER.dict()
 
-        # init a dict with rand data to be shared among procceses
-        self.multiprocess_shared_dict['scan'] = [-1, -1]
+        # init a dict to be shared among procceses
+        self.mp_shared_dict['scan'] = None
+        self.mp_shared_dict['sliders'] = None
 
         # defines a multiprocess for sending the data
         self.process_send_packet = Process(target=self.create_data_json,
-                                           args=([self.multiprocess_shared_dict]))
-        # start porcess
+                                           args=([self.mp_shared_dict]))
+
         self.process_send_packet.start()
+
         # start camera on main thread due to multiprocces issue
-        self.scanner_function(self.multiprocess_shared_dict)
+        self.scanner_function(self.mp_shared_dict)
         # join the two processes
         self.process_send_packet.join()
 
-    ##################################################
-
-    def get_init_keystone(self):
-
-     # load the initial keystone data from file
-        keystone_points_array = np.loadtxt(
+    def scanner_function(self, mp_shared_dict):
+        # get init keystones
+        self.init_keystone = np.loadtxt(
             self.get_folder_path() + 'keystone.txt', dtype=np.float32)
 
-        # break it to points
-        ulx = keystone_points_array[0][0]
-        uly = keystone_points_array[0][1]
-        urx = keystone_points_array[1][0]
-        ury = keystone_points_array[1][1]
-        blx = keystone_points_array[2][0]
-        bly = keystone_points_array[2][1]
-        brx = keystone_points_array[3][0]
-        bry = keystone_points_array[3][1]
-        # init keystone
-        init_keystone = [ulx, uly, urx, ury, blx, bly, brx, bry]
-        return init_keystone
-
-    ##################################################
-
-    def scanner_function(self, multiprocess_shared_dict):
-        # get init keystones
-        self.init_keystone = self.get_init_keystone()
         # define the table params
-        grid_dimensions_x = self.table_settings['nrows']
-        grid_dimensions_y = self.table_settings['ncols']
-        array_of_tags_from_json = self.np_string_tags(
-            self.table_settings['tags'])
-
-        array_of_maps_form_json = self.table_settings['type']
-
-        cell_gap = self.table_settings['cell_gap']
-
-        # init type list array
-        TYPES_LIST = []
-
-        # holder of old cell colors array to check for new scan
-        OLD_CELL_COLORS_ARRAY = []
+        grid_dim = (int(self.table_settings['ncols']),
+                    int(self.table_settings['nrows']))
 
         # serial num of camera, to switch between cameras
-        camPos = self.table_settings['camId']
+        camPos = self.table_settings['cam_id']
 
-        # check if using intel realsense camera or not
-        self.using_realsense = self.table_settings['realsense']
-
-        # try from a device 1 in list, not default webcam
-        if self.using_realsense == False:
+        if not self.using_realsense:
             video_capture = cv2.VideoCapture(camPos)
+
+        if self.using_realsense:
+            video_res = (int(self.pipeline.wait_for_frames().get_color_frame().get_width()),
+                         int(self.pipeline.wait_for_frames().get_color_frame().get_height()))
         else:
-            self.realsense_init()
-            # video_capture = self.pipeline
-        time.sleep(1)
+            video_res = (int(video_capture.get(3)), int(video_capture.get(4)))
 
-        if self.using_realsense == False:
-
-            if grid_dimensions_y < grid_dimensions_x:
-                # get the smaller of two grid ratio x/y or y/x
-                grid_ratio = grid_dimensions_y / grid_dimensions_x
-                video_resolution_x = int(video_capture.get(3))
-                video_resolution_y = int(video_capture.get(3) * grid_ratio)
-            else:
-                # get the smaller of two grid ratio x/y or y/x
-                grid_ratio = grid_dimensions_x / grid_dimensions_y
-                video_resolution_x = int(video_capture.get(3) * grid_ratio)
-                video_resolution_y = int(video_capture.get(3))
-
-        else:
-            if grid_dimensions_y < grid_dimensions_x:
-                # get the smaller of two grid ratio x/y or y/x
-                grid_ratio = grid_dimensions_y / grid_dimensions_x
-                video_resolution_x = self.pipeline.wait_for_frames().get_color_frame().get_width()
-                video_resolution_y = self.pipeline.wait_for_frames()\
-                    .get_color_frame().get_height() * grid_ratio
-            else:
-                # get the smaller of two grid ratio x/y or y/x
-                grid_ratio = grid_dimensions_x / grid_dimensions_y
-                video_resolution_x = self.pipeline.wait_for_frames()\
-                    .get_color_frame().get_width() * grid_ratio
-                video_resolution_y = self.pipeline.\
-                    wait_for_frames().get_color_frame().get_height()
-
-        # define the video window
+        # define the video windows
         cv2.namedWindow('scanner_gui_window', cv2.WINDOW_NORMAL)
-        cv2.resizeWindow('scanner_gui_window', 400, 400)
-        cv2.moveWindow('scanner_gui_window', 10, 100)
+        cv2.resizeWindow('scanner_gui_window', 1920,1080)
+        cv2.namedWindow('binary_image', cv2.WINDOW_NORMAL)
+        cv2.namedWindow('gradient_map', cv2.WINDOW_NORMAL)
+        cv2.moveWindow('binary_image', 1921,0)
+        cv2.moveWindow('gradient_map', 2721,0)
+        cv2.resizeWindow('binary_image', 800,800)
+        cv2.resizeWindow('gradient_map', 800,800)
 
-        # call colors dictionary
-        DICTIONARY_COLORS = {
-            # black
-            0: (0, 0, 0),
-            # white
-            1: (255, 255, 255)
-        }
+        total_slider_y = 0
+        for slider in self.sliders:
+            total_slider_y += slider.y
 
         # define the size for each scanner
-        x_ratio = int(video_resolution_x / (grid_dimensions_x * 4))
-        y_ratio = int(video_resolution_y / (grid_dimensions_y * 4))
-        scanner_square_size = np.minimum(x_ratio, y_ratio)
+        dynamic_x = int(self.table_settings['grid_w']/1920 * video_res[0])
+        dynamic_y = int(self.table_settings['grid_h']/1080 * video_res[1])
+        block_size = (dynamic_x / grid_dim[0], dynamic_y / (grid_dim[1]))
+        codepoint_size = (block_size[0] / self.width, block_size[1] / self.width)
 
-        # create the location  array of scanners
-        array_of_scanner_points_locations = self.get_scanner_pixel_coordinates(
-            grid_dimensions_x, grid_dimensions_y, cell_gap, video_resolution_x,
-            video_resolution_y, scanner_square_size)
+        # get coordinates for scanners (top left corner of each area)
+        scanner_points = []
+        for y in range(grid_dim[1]):
+            for x in range(grid_dim[0]):
+                scanner_points.extend([
+                    (int(x * block_size[0] + i * codepoint_size[0]),
+                     int(y * block_size[1] + j * codepoint_size[1]))
+                    for i in range(self.width) for j in range(self.width)
+                ])
 
-        # resize video resolution if cell gaps are used:
-        video_resolution_x = int(video_resolution_x + grid_dimensions_x * cell_gap)
-        video_resolution_y = int(video_resolution_y + grid_dimensions_y * cell_gap)
+        previous_colors = []
+        previous_slider_value = {slider.id : 0 for slider in self.sliders}
+        evaluate_slider = {slider.id : True for slider in self.sliders} 
+        reevaluate_slider = {slider.id : False for slider in self.sliders}
+        slider_eval_time = {slider.id : 0 for slider in self.sliders}
+        value_eval_time = {slider.id : 0 for slider in self.sliders}
 
-    # run the video loop forever
+        print(slider_eval_time)
+
+        # run the video loop forever
         while True:
-
-            if self.using_realsense == True:
+            if self.using_realsense:
                 frames = self.pipeline.wait_for_frames()  # returns composite_frame
                 color_frame = frames.get_color_frame()  # returns video_frame
+                color_frame = np.asanyarray(color_frame.get_data())
             else:
                 # read video frames
-                RET, color_frame = video_capture.read()
+                _, color_frame = video_capture.read()
 
-            # zero an array to collect the scanners
-            CELL_COLORS_ARRAY = []
+            current_colors = []
 
             # get a new matrix transformation every frame
-            keystone_data = self.transfrom_matrix(
-                video_resolution_x, video_resolution_y, self.listen_to_UI_interaction(self.init_keystone))
+            keystone_data = self.transform_matrix(video_res, self.listen_to_UI_interaction())
 
-                # mirror camera
-            if self.table_settings['mirror_cam'] is True:
-                if self.using_realsense == True:                    
-                    color_frame = cv2.flip(color_frame, 1)
+            # mirror camera (webcam)
+            if self.table_settings['mirror_cam']:
+                if self.using_realsense:
+                    color_frame = np.flip(color_frame, 1)
                 else:
-                    # mirror camera
-                    if RET != False:
-                        color_frame = cv2.flip(color_frame, 1)
+                    color_frame = cv2.flip(color_frame, 1)
 
-            if self.using_realsense == True:
-                color_frame = np.asanyarray(color_frame.get_data())
+            # rotate image
+            if self.table_settings['rotate_image']:
+                if self.using_realsense:
+                    color_frame = np.rot90(color_frame, 2)
+                else:
+                    color_frame = cv2.rotate(color_frame, rotateCode=cv2.ROTATE_180)
 
             # warp the video based on keystone info
-            video_resolution_x = int(video_resolution_x)  # convert to int. will cause an error in cv2.warpPerspective() otherwise.
-            video_resolution_y = int(video_resolution_y)
-            keystoned_video = cv2.warpPerspective(
-                color_frame, keystone_data, (video_resolution_x, video_resolution_y))
+            keystoned_video = cv2.warpPerspective(color_frame, keystone_data, video_res)
 
-            # cell counter
-            count = 0
-            # run through locations list and make scanners
-            for this_scanner_location in array_of_scanner_points_locations:
+            # convert input to LAB colour space
+            lab_image = cv2.cvtColor(keystoned_video, cv2.COLOR_BGR2LAB)
 
-                # set x and y from locations array
-                x = this_scanner_location[0]
-                y = this_scanner_location[1]
+            # uncomment this to show intermediate image
+            # cv2.imshow("lab_image", lab_image)
 
-                # use this to control reduction of scanner size
-                this_scanner_max_dimension = int(scanner_square_size)
-                scanner_reduction = int(scanner_square_size / 4)
-                # short vars
-                x_red = x + this_scanner_max_dimension - scanner_reduction
-                y_red = y + this_scanner_max_dimension - scanner_reduction
+            # get L/a/b channels
+            ch_l, ch_a, ch_b = cv2.split(lab_image)
 
-                # set scanner crop box size and position
-                # at x,y + crop box size
+            # sensitivity gradient to compensate unevenly distributed light
+            ch_l_rows, ch_l_cols = ch_l.shape
+            gradient_map = np.tile(np.linspace(self.gradient_min, self.gradient_max, ch_l_rows), (ch_l_cols, 1)).T
 
-                this_scanner_size = keystoned_video[y + scanner_reduction:y_red,
-                                                    x + scanner_reduction:x_red]
+            lab_image = np.multiply(lab_image, np.repeat(gradient_map, 3).reshape(lab_image.shape))
+            ch_l, ch_a, ch_b = cv2.split(lab_image)
 
-                # draw rects with mean value of color
-                mean_color = cv2.mean(this_scanner_size)
+            # reduce the colors based on a threshold
+            binary_image = np.where(
+                (ch_l <= self.max_l) & (ch_a <= self.max_a) & (ch_b <= self.max_b), 255, 0
+                ).astype(np.uint8)
 
-                # convert colors to rgb
-                color_b, color_g, color_r, _ = np.uint8(mean_color)
-                mean_color_RGB = np.uint8([[[color_b, color_g, color_r]]])
+            # uncomment these to show intermediate images
+            cv2.imshow("binary_image", binary_image)
+            cv2.imshow("gradient_map", gradient_map)
+            # reduce the colors based on slider threshold
+            binary_image_slider = np.where(
+                (ch_l <= self.slider_l) & (ch_a <= self.slider_a) & (ch_b <= self.slider_b), 255, 0
+                ).astype(np.uint8)
 
-                # select the right color based on sample
-                scannerCol = self.select_color_by_mean_value(
-                    mean_color_RGB)
+            # uncomment this to show intermediate image
+            # cv2.imshow("binary_image_slider", binary_image_slider)
 
-                # add colors to array for type analysis
-                CELL_COLORS_ARRAY.append(scannerCol)
+            # get slider values
+            mp_shared_dict['sliders'] = {
+                slider.id: slider.evaluate(binary_image_slider, video_res, block_size)
+                for slider in self.sliders
+            }
 
-                # get color from dict
-                thisColor = DICTIONARY_COLORS[scannerCol]
+            # send json if slider changed:
+            for slider, value in mp_shared_dict['sliders'].items():
+                # first evaluation:
+                if evaluate_slider[slider] and value != previous_slider_value[slider] and value is not None:
+                    slider_eval_time[slider] = datetime.now()  # remember time of first slider evaluation
+                    value_eval_time[slider] = value  # remember value of first slider evaluation
+                    reevaluate_slider[slider] = True  # start comparing old and new value
+                    evaluate_slider[slider] = False  # stop slider evaluation
 
-                # ? only draw vis if settings has 1 in gui
-                if self.table_settings['gui'] is True:
-                    # draw rects with frame colored by range result
-                    cv2.rectangle(keystoned_video,
-                                    (x + scanner_reduction,
-                                    y + scanner_reduction),
-                                    (x_red, y_red),
-                                    thisColor, 1)
+                # second evaluation:
+                if reevaluate_slider[slider] and datetime.now() > slider_eval_time[slider] + timedelta(milliseconds=self.table_settings['interval']):
+                    if value == value_eval_time[slider]:
+                        self.send_json_to_UDP(mp_shared_dict['scan'])  # send message
+                        previous_slider_value[slider] = value  # remember value
+                        print('slider val {0} : {1} sent '.format(slider, value), datetime.now(), "via %s:%s" % (self.UDP_IP, self.UDP_PORT))
+                        
+                    reevaluate_slider[slider] = False  # stop re-evaluating
+                    evaluate_slider[slider] = True  # start evaluation
 
-                    # cell counter
-                count = count + 1
+            # reduce the colors based on a threshold
+            binary_image = np.where(
+                (ch_l <= self.max_l) & (ch_a <= self.max_a) & (ch_b <= self.max_b), 255, 0
+                ).astype(np.uint8)
+
+            # uncomment this to show intermediate image
+            # cv2.imshow("binary_image", binary_image)
+
+            # run through coordinates and analyse each image
+            for x, y in scanner_points:
+                # get image slice for scanning
+                scan_pixels = binary_image[y:int(y + codepoint_size[1]),
+                                           x:int(x + codepoint_size[0])]
+
+                # determine color based on the distribution of B/W values in the image
+                current_colors.append(0 if np.quantile(scan_pixels, self.quantile) == 0 else 1)
 
             # reduce unnecessary scan analysis and sending by comparing
-            # the list of scanned cells to an old one
-            if CELL_COLORS_ARRAY != OLD_CELL_COLORS_ARRAY:
-                # send array to method for checking types
-                TYPES_LIST = self.find_type_in_tags_array(
-                    CELL_COLORS_ARRAY, array_of_tags_from_json,
-                    array_of_maps_form_json,
-                    grid_dimensions_x, grid_dimensions_y)
+            # the list of scanned cells to the previous one
+            if current_colors != previous_colors:
+                # identify tags and and store result in mp_shared_dict
+                mp_shared_dict['scan'] = [
+                    self.brick_rotation_check(block) or [-1, -1]
+                    for block in np.reshape(
+                        current_colors, (grid_dim[0] * grid_dim[1], self.tag_length))
+                ]
+                previous_colors = current_colors
 
-                # match the two
-                OLD_CELL_COLORS_ARRAY = CELL_COLORS_ARRAY
+            if self.table_settings['gui']:
+                # visualize grid
+                for x in range(grid_dim[0]):
+                    for y in range(grid_dim[1]):
+                        cv2.rectangle(
+                            keystoned_video,
+                            (int(x * block_size[0]), int(y * block_size[1])),
+                            (int((x + 1) * block_size[0]), int((y + 1) * block_size[1])),
+                            WHITE, 1)
 
-                # [!] Store the type list results in the multiprocess_shared_dict
-                multiprocess_shared_dict['scan'] = TYPES_LIST
+                # draw dots with detected color
+                for (x, y), value in zip(scanner_points, current_colors):
+                    center = (int(x + codepoint_size[0] / 2), int(y + codepoint_size[1] / 2))
+                    cv2.circle(keystoned_video, center, 2, BLACK if value else WHITE, -1)
 
-            else:
-                # else don't do it
-                pass
+                # draw sliders
+                for slider in self.sliders:
+                    slider.draw(keystoned_video)
 
-            if self.table_settings['gui'] is True:
                 # draw arrow to interaction area
-                self.ui_selected_corner(
-                    video_resolution_x, video_resolution_y, keystoned_video)
-                # draw the video to screen
-                cv2.imshow("scanner_gui_window", keystoned_video)
+                self.ui_selected_corner(video_res[0], video_res[1], keystoned_video)
+                cv2.putText(keystoned_video, "magnitude: " + str(self.magnitude) + " [SPACE]",
+                            (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
+                cv2.putText(keystoned_video, "exposure: " + str(self.exposure) + " [e/r]",
+                            (50, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
+                cv2.putText(keystoned_video, "gain: " + str(self.gain) + " [g/h]",
+                            (50, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
+                cv2.putText(keystoned_video, "max_l: " + str(self.max_l) + " [+/-]",
+                            (50, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
+                cv2.putText(keystoned_video, "grad2ient min:%2.2f max:%2.2f " % (self.gradient_min, self.gradient_max) + " [5,6 / 7,8]",
+                            (50, 130), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
+                cv2.putText(keystoned_video, "slider_l: " + str(self.slider_l) + " [</>]",
+                            (50, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
+                cv2.putText(keystoned_video, "quantile: %2.2f" % self.quantile + " [y/x]",
+                            (50, 170), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
+
+            # draw the video to screen
+            cv2.imshow("scanner_gui_window", keystoned_video)
 
         # close opencv
         video_capture.release()
         cv2.destroyAllWindows()
 
-    ##################################################
-
     def ui_selected_corner(self, x, y, vid):
         """prints text on video window"""
-
         mid = (int(x / 2), int(y / 2))
-        if self.selected_corner is None:
-            # font
-            font = cv2.FONT_HERSHEY_SIMPLEX
-
-            # fontScale
-            fontScale = 1.2
-            # Blue color in BGR
-            color = (0, 0, 255)
-            # Line thickness of 2 px
-            thickness = 2
-            cv2.putText(vid, 'select corners using 1,2,3,4 and move using A/W/S/D',
-                        (5, int(y / 2)), font,
-                        fontScale, color, thickness, cv2.LINE_AA)
-        else:
+        if self.selected_corner is not None:
             case = {
                 '1': [(0, 0), mid],
-                '2':  [(x, 0), mid],
-                '3':  [(0, y), mid],
-                '4':  [(x, y), mid],
+                '2': [(x, 0), mid],
+                '3': [(0, y), mid],
+                '4': [(x, y), mid],
             }
-
-            # print(type(self.selected_corner))
+            col = (0, 0, 255) if self.magnitude == 1 else (255, 0, 0)
             cv2.arrowedLine(
                 vid, case[self.selected_corner][0],
                 case[self.selected_corner][1],
-                (0, 0, 255), 2)
+                col, 2)
 
-    ##################################################
-
-    def get_scanner_pixel_coordinates(self, grid_dimensions_x, grid_dimensions_y, cell_gap, video_res_x, video_res_y, scanner_square_size):
-        """Creates list of pixel coordinates for scanner.
-
-        Steps:
-            - Determine virtual points on the grid that
-            will be the centers of blocks.
-            - Transforms virtual[x, y] coordinate pairs to
-            pixel representations for scanner.
-            - Transform those virtual points pixel coordinates
-            and expand them into 3x3 clusters of pixel points
-
-        Args:
-
-        Returns list of[x, y] pixel coordinates for scanner to read.
-        """
-
-        # calc the half of the ratio between
-        # screen size and the x dim of the grid
-        # to center the grid in both Y & X
-        grid_x_offset = int(0.5 *
-                            (video_res_x - (grid_dimensions_x * scanner_square_size * 4)))
-        grid_y_offset = int(0.5 *
-                            (video_res_y - (grid_dimensions_y * scanner_square_size * 4)))
-
-        # create the list of points
-        pixel_coordinates_list = []
-
-        # create the 4x4 sub grid cells
-        for y in range(0, grid_dimensions_y):
-            for x in range(0, grid_dimensions_x):
-
-                x_positions = x * (scanner_square_size * 4 + cell_gap)
-                y_positions = y * (scanner_square_size * 4 + cell_gap)
-
-                # make the actual location for the 4x4 scanner points
-                for i in range(0, 4):
-                    for j in range(0, 4):
-                        # add them to list
-                        pixel_coordinates_list.append(
-                            # x value of this scanner location
-                            [grid_x_offset + x_positions + (i * scanner_square_size),
-                             # y value of this scanner location
-                             grid_y_offset + y_positions + (j * scanner_square_size)])
-        return pixel_coordinates_list
-
-    ##################################################
-
-    def np_string_tags(self, json_data):
-        # return each item for this field
-        d = []
-        for i in json_data:
-            d.append(np.array([int(ch) for ch in i]))
-        return d
-
-    ##################################################
-
-    # 2nd proccess to
-    def create_data_json(self, multiprocess_shared_dict):
-        self.table_settings = self.parse_json_file('cityscopy')
+    def create_data_json(self, mp_shared_dict):
         SEND_INTERVAL = self.table_settings['interval']
         # initial dummy value for old grid
         old_scan_results = [-1]
         SEND_INTERVAL = timedelta(milliseconds=SEND_INTERVAL)
         last_sent = datetime.now()
+
         while True:
-            scan_results = multiprocess_shared_dict['scan']
+            scan_results = mp_shared_dict['scan']
             from_last_sent = datetime.now() - last_sent
-            if (scan_results != old_scan_results) and from_last_sent > SEND_INTERVAL:
+
+            if scan_results and scan_results != old_scan_results and \
+                    from_last_sent > SEND_INTERVAL:
                 try:
-                    if self.table_settings['cityio'] is True:
-                        self.send_json_to_cityIO(json.dumps(scan_results))
-                    else:
-                        # send as string via UDP:
-                        self.send_json_to_UDP(scan_results)
-                        # save json to disk:
-                        with open('settings/api.json', 'w') as output_file:
-                            json.dump({'grid':scan_results}, output_file)
+                    # send as string via UDP:
+                    self.send_json_to_UDP(scan_results)
                 except Exception as ERR:
                     print(ERR)
                 # match the two grid after send
@@ -499,73 +476,28 @@ class Cityscopy:
                 last_sent = datetime.now()
 
                 # debug print
-                print('\n', 'CityScopy grid sent at:', datetime.now())
-                # print(scan_results)
-
-    ##################################################
-
-    def send_json_to_cityIO(self, cityIO_json):
-        '''
-        sends the grid to cityIO
-        '''
-        # defining the api-endpoint
-        API_ENDPOINT = "https://cityio.media.mit.edu/api/table/update/" + \
-            self.table_settings['cityscope_project_name'] + "/grid/"
-        # sending post request and saving response as response object
-        req = requests.post(url=API_ENDPOINT, data=cityIO_json)
-        if req.status_code != 200:
-            print("cityIO might be down. so sad.")
-        print("sending grid to", API_ENDPOINT,  req)
-
-    ##################################################
+                print('CityScopy grid sent at:', datetime.now(), "via %s:%s" % (self.UDP_IP, self.UDP_PORT))
 
     def send_json_to_UDP(self, scan_results):
-        # defining the udp endpoint
-        UDP_IP = "127.0.0.1"
-        UDP_PORT = 5000
+        slider_val = self.mp_shared_dict['sliders']
+        json_dict = {'grid': scan_results, 'sliders': slider_val}
+        json_string = json.dumps(json_dict)
+
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try:
-            sock.sendto(str(scan_results).encode('utf-8'), (UDP_IP, UDP_PORT))
+            sock.sendto(json_string.encode('utf-8'), (self.UDP_IP, self.UDP_PORT))
         except Exception as e:
             print(e)
-
-    ##################################################
-
-    def parse_json_file(self, field):
-        """
-        get data from JSON settings files.
-
-        Steps:
-        - opens file
-        - checks if field has objects longer than one char [such as the 'tags' field]
-        - if so, converts them to numpy arrays
-
-        Args:
-
-        Returns the desired filed
-        """
-
-        # init array for json fields
-        settings_file = self.get_folder_path() + self.SETTINGS_PATH
-        # open json file
-        with open(settings_file) as d:
-            data = json.load(d)
-        return(data[field])
-
-    ##################################################
 
     def get_folder_path(self):
         """
         gets the local folder
         return is as a string with '/' at the ednd
         """
-        loc = str(os.path.realpath(
+        return str(os.path.realpath(
             os.path.join(os.getcwd(), os.path.dirname(__file__)))) + '/'
-        return loc
 
-    ##################################################
-
-    def listen_to_UI_interaction(self, init_keystone):
+    def listen_to_UI_interaction(self):
         """
         listens to user interaction.
 
@@ -576,111 +508,129 @@ class Cityscopy:
 
         Returns 4x2 array of points location for key-stoning
         """
-
         # INTERACTION
         corner_keys = ['1', '2', '3', '4']
         move_keys = ['w', 'a', 's', 'd']
         realsense_keys = ['e', 'r', 'g', 'h']
+        bgr_threshold_keys = ['+', '-']
+        slider_threshold_keys = ['<','>']
+        key = chr(cv2.waitKey(1) & 255)
 
-        KEY_STROKE = cv2.waitKey(1)
-        if chr(KEY_STROKE & 255) in corner_keys:
-            self.selected_corner = chr(KEY_STROKE & 255)
-        if self.selected_corner != None and chr(KEY_STROKE & 255) in move_keys:
-            self.corner_direction = chr(KEY_STROKE & 255)
+        if key == ' ':
+            self.magnitude = 10 if self.magnitude == 1 else 1
+            print("MAGNITUDE", self.magnitude)
 
+        elif key in bgr_threshold_keys:
+            if key == '+':
+                self.max_l += self.magnitude
+                print("luminance threshold at ", self.max_l)
+            elif key == '-':
+                self.max_l -= self.magnitude
+                print("luminance threshold at ", self.max_l)
+
+        elif key in slider_threshold_keys:
+            if key == '<':
+                self.slider_l += self.magnitude
+                print("slider luminance threshold at ", self.slider_l)
+            elif key == '>':
+                self.slider_l -= self.magnitude
+                print("slider luminance threshold at ", self.slider_l)
+
+        elif key in corner_keys:
+            self.selected_corner = key
+
+        elif self.selected_corner is not None and key in move_keys:
             if self.selected_corner == '1':
-                if self.corner_direction == 'd':
-                    init_keystone[0] = init_keystone[0] - 1
-                elif self.corner_direction == 'a':
-                    init_keystone[0] = init_keystone[0] + 1
-                elif self.corner_direction == 'w':
-                    init_keystone[1] = init_keystone[1] + 1
-                elif self.corner_direction == 's':
-                    init_keystone[1] = init_keystone[1] - 1
+                if key == 'd':
+                    self.init_keystone[0][0] -= self.magnitude
+                elif key == 'a':
+                    self.init_keystone[0][0] += self.magnitude
+                elif key == 'w':
+                    self.init_keystone[0][1] += self.magnitude
+                elif key == 's':
+                    self.init_keystone[0][1] -= self.magnitude
 
             elif self.selected_corner == '2':
-                if self.corner_direction == 'd':
-                    init_keystone[2] = init_keystone[2] - 1
-                elif self.corner_direction == 'a':
-                    init_keystone[2] = init_keystone[2] + 1
-                elif self.corner_direction == 'w':
-                    init_keystone[3] = init_keystone[3] + 1
-                elif self.corner_direction == 's':
-                    init_keystone[3] = init_keystone[3] - 1
+                if key == 'd':
+                    self.init_keystone[1][0] -= self.magnitude
+                elif key == 'a':
+                    self.init_keystone[1][0] += self.magnitude
+                elif key == 'w':
+                    self.init_keystone[1][1] += self.magnitude
+                elif key == 's':
+                    self.init_keystone[1][1] -= self.magnitude
 
             elif self.selected_corner == '3':
-                if self.corner_direction == 'd':
-                    init_keystone[4] = init_keystone[4] - 1
-                elif self.corner_direction == 'a':
-                    init_keystone[4] = init_keystone[4] + 1
-                elif self.corner_direction == 'w':
-                    init_keystone[5] = init_keystone[5] + 1
-                elif self.corner_direction == 's':
-                    init_keystone[5] = init_keystone[5] - 1
+                if key == 'd':
+                    self.init_keystone[2][0] -= self.magnitude
+                elif key == 'a':
+                    self.init_keystone[2][0] += self.magnitude
+                elif key == 'w':
+                    self.init_keystone[2][1] += self.magnitude
+                elif key == 's':
+                    self.init_keystone[2][1] -= self.magnitude
 
             elif self.selected_corner == '4':
-                if self.corner_direction == 'd':
-                    init_keystone[6] = init_keystone[6] - 1
-                elif self.corner_direction == 'a':
-                    init_keystone[6] = init_keystone[6] + 1
-                elif self.corner_direction == 'w':
-                    init_keystone[7] = init_keystone[7] + 1
-                elif self.corner_direction == 's':
-                    init_keystone[7] = init_keystone[7] - 1
-        #  saves to file
-        elif chr(KEY_STROKE & 255) == 'k':
+                if key == 'd':
+                    self.init_keystone[3][0] -= self.magnitude
+                elif key == 'a':
+                    self.init_keystone[3][0] += self.magnitude
+                elif key == 'w':
+                    self.init_keystone[3][1] += self.magnitude
+                elif key == 's':
+                    self.init_keystone[3][1] -= self.magnitude
+
+        elif key == '5':
+            self.gradient_min += self.magnitude / 100
+        elif key == '6':
+            self.gradient_min -= self.magnitude / 100
+        elif key == '7':
+            self.gradient_max += self.magnitude / 100
+        elif key == '8':
+            self.gradient_max -= self.magnitude / 100
+        elif key == 'y':
+            self.quantile += self.magnitude / 100
+        elif key == 'x':
+            self.quantile -= self.magnitude / 100
+
+        # save to file
+        elif key == 'k':
             # reset selected corner
             self.selected_corner = None
-            self.save_keystone_to_file(
-                self.listen_to_UI_interaction(init_keystone))
+            self.save_keystone_to_file(self.init_keystone)
 
         # realsense exposure control
         if self.using_realsense:
-            if chr(KEY_STROKE & 255) in realsense_keys:
+            if key in realsense_keys:
                 # increase exposure
-                if chr(KEY_STROKE & 255) == 'e':
-                    exposure = self.device.get_option(rs.option.exposure)
-                    self.device.set_option(rs.option.exposure, exposure + int(exposure/10))
-                
+                if key == 'e':
+                    self.exposure = self.device.get_option(rs.option.exposure)
+                    self.device.set_option(rs.option.exposure, self.exposure + self.magnitude)
+
                 # decrease exposure
-                elif chr(KEY_STROKE & 255) == 'r':
-                    exposure = self.device.get_option(rs.option.exposure)
-                    if exposure > 1:    
-                        self.device.set_option(rs.option.exposure, exposure - exposure/10)
-                
+                elif key == 'r':
+                    self.exposure = self.device.get_option(rs.option.exposure)
+                    if self.exposure > 1:
+                        self.device.set_option(rs.option.exposure, self.exposure - self.magnitude)
+
                 # increase gain
-                elif chr(KEY_STROKE & 255) == 'g':
-                    gain = self.device.get_option(rs.option.gain)
-                    self.device.set_option(rs.option.gain, gain + int(gain/10))
+                elif key == 'g':
+                    self.gain = self.device.get_option(rs.option.gain)
+                    self.device.set_option(rs.option.gain, self.gain + self.magnitude)
 
                 # decrease gain
-                elif chr(KEY_STROKE & 255) == 'h':
-                    gain = self.device.get_option(rs.option.gain)
-                    if gain > 1:
-                        self.device.set_option(rs.option.gain, gain - gain/10)
+                elif key == 'h':
+                    self.gain = self.device.get_option(rs.option.gain)
+                    if self.gain > 1:
+                        self.device.set_option(rs.option.gain, self.gain - self.magnitude)
 
-                print("exposure:", self.device.get_option(rs.option.exposure),\
+                print("exposure:", self.device.get_option(rs.option.exposure),
                       "gain:", self.device.get_option(rs.option.gain))
 
-            # reset realsense values to standard:
-            if chr(KEY_STROKE & 255) == ' ':
-                self.device.set_option(rs.option.gain, 64)
-                self.device.set_option(rs.option.exposure, 166)
-                print("exposure:", self.device.get_option(rs.option.exposure),\
-                      "gain:", self.device.get_option(rs.option.gain))
+            elif key == 'u':
+                self.table_settings['gui'] = not self.table_settings['gui']
 
-        ulx = init_keystone[0]
-        uly = init_keystone[1]
-        urx = init_keystone[2]
-        ury = init_keystone[3]
-        blx = init_keystone[4]
-        bly = init_keystone[5]
-        brx = init_keystone[6]
-        bry = init_keystone[7]
-
-        return np.asarray([(ulx, uly), (urx, ury), (blx, bly), (brx, bry)], dtype=np.float32)
-
-    ##################################################
+        return self.init_keystone
 
     def save_keystone_to_file(self, keystone_data_from_user_interaction):
         """
@@ -688,143 +638,49 @@ class Cityscopy:
 
         Steps:
         saves an array of points to file
-
         """
-
         filePath = self.get_folder_path() + "keystone.txt"
         np.savetxt(filePath, keystone_data_from_user_interaction)
         print("[!] keystone points were saved in", filePath)
 
-    ##################################################
-
-    def transfrom_matrix(self, video_resolution_x, video_resolution_y, keyStonePts):
+    def transform_matrix(self, video_res, keyStonePts):
         '''
         NOTE: Aspect ratio must be flipped
         so that aspectRat[0,1] will be aspectRat[1,0]
         '''
-
-        # inverted screen ratio for np source array
-        video_aspect_ratio = (video_resolution_y, video_resolution_x)
         # np source points array
-        keystone_origin_points_array = np.float32(
-            [
-                [0, 0],
-                [video_aspect_ratio[1], 0],
-                [0, video_aspect_ratio[0]],
-                [video_aspect_ratio[1], video_aspect_ratio[0]]
-            ])
+        keystone_origin_points_array = np.float32([
+            [0, 0],
+            [video_res[0], 0],
+            [0, video_res[1]],
+            video_res
+        ])
         # make the 4 pnts matrix perspective transformation
-        transfromed_matrix = cv2.getPerspectiveTransform(
-            keyStonePts, keystone_origin_points_array)
+        return cv2.getPerspectiveTransform(keyStonePts, keystone_origin_points_array)
 
-        return transfromed_matrix
+    def brick_rotation_check(self, block):
+        # convert block to square representation for rotation checks
+        block = np.reshape(block, (self.width, self.width))
 
-    ##################################################
-
-    def select_color_by_mean_value(self, mean_color_RGB):
-        '''
-        convert color to hsv for oclidian distance
-        '''
-        bgr_to_grayscale = cv2.cvtColor(mean_color_RGB, cv2.COLOR_BGR2GRAY)
-        if int(bgr_to_grayscale) < 125:
-            this_color = 0
-        else:
-            this_color = 1
-        return this_color
-
-    ##################################################
-
-    def find_type_in_tags_array(self, cellColorsArray, tagsArray, mapArray,
-                                grid_dimensions_x, grid_dimensions_y):
-        """Get the right brick type out of the list of JSON types.
-
-        Steps:
-            - get the colors array from the scanners
-            - get the JSON lists of type tags, mapping, rotations
-            - parse the color data into an NP array of the table shape
-
-        Args:
-        Returns an array of found types
-        """
-        scan_results_array = []
-        # create np colors array with table struct
-        np_array_of_scanned_colors = np.reshape(
-            cellColorsArray, (grid_dimensions_x * grid_dimensions_y, 16))
-
-        # go through the results
-        for this_16_bits in np_array_of_scanned_colors:
-            result_tag = self.brick_rotation_check(
-                this_16_bits, tagsArray, mapArray)
-            # if no results were found
-            if result_tag == None:
-                result_tag = [-1, -1]
-            # add a list of results to the array
-            scan_results_array.append(result_tag)
-
-        # print(json.dumps({'asd':scan_results_array}))            
-
-        # finally, return this list to main program for UDP
-        return scan_results_array
-
-    ##################################################
-
-    def brick_rotation_check(self, this_16_bits, tagsArray, mapArray):
-        tags_array_counter = 0
-        for this_tag in tagsArray:
-            # if this 16 bits equal the tag as is
-            if np.array_equal(this_16_bits, this_tag):
-                return [tags_array_counter, 0]
-            # convert list of 16 bits to 4x4 matrix for rotation
-            brk_4x4 = np.reshape(this_16_bits, (4, 4))
-            # rotate once
-            brk_4x4_270 = np.reshape((np.rot90(brk_4x4)), 16)
-            if np.array_equal(brk_4x4_270, this_tag):
-                return [tags_array_counter, 1]
-            # rotate once
-            brk_4x4_180 = np.reshape((np.rot90(np.rot90(brk_4x4))), 16)
-            if np.array_equal(brk_4x4_180, this_tag):
-                return [tags_array_counter, 2]
-            # rotate once
-            brk_4x4_90 = np.reshape(
-                (np.rot90(np.rot90(np.rot90(brk_4x4)))), 16)
-            if np.array_equal(brk_4x4_90, this_tag):
-                return [tags_array_counter, 3]
-            else:
-                # if no rotation was found go to next tag
-                # in tag list
-                tags_array_counter = tags_array_counter + 1
-
-    ##################################################
-
-    def udp_listener(self):
-        UDP_IP = "127.0.0.1"
-        UDP_PORT = 5000
-
-        sock = socket.socket(socket.AF_INET,  # Internet
-                             socket.SOCK_DGRAM)  # UDP
-        sock.bind((UDP_IP, UDP_PORT))
-        print("Starting UDP listener at:", UDP_IP, ' port: ', UDP_PORT, sock)
-
-        while True:
-            data, _ = sock.recvfrom(1024)  # buffer size is 1024 bytes
-            print('\n', data.decode())
-
-    ##################################################
+        for tag_count, tag in enumerate(self.tags_np):
+            # test all four rotations
+            for i in range(4):
+                if np.array_equal(np.reshape(block, self.tag_length), tag):
+                    return [tag_count, i]
+                block = np.rot90(block)
 
     def keystone(self):
         # file path to save
-        self.KEYSTONE_PATH = self.get_folder_path() + '/' + "keystone.txt"
+        self.KEYSTONE_PATH = self.get_folder_path() + 'keystone.txt'
         print('keystone path:', self.KEYSTONE_PATH)
 
         # serial num of camera, to switch between cameras
-        camPos = self.table_settings['camId']
-        self.using_realsense = self.table_settings['realsense']
+        camPos = self.table_settings['cam_id']
+        self.using_realsense = self.table_settings['realsense']['active']
 
         # try from a device 1 in list, not default webcam
-        if self.using_realsense == False:
+        if not self.using_realsense:
             WEBCAM = cv2.VideoCapture(camPos)
-        else:
-            self.realsense_init()
 
         time.sleep(1)
 
@@ -832,11 +688,11 @@ class Cityscopy:
         cv2.namedWindow('canvas', cv2.WINDOW_NORMAL)
 
         # top left, top right, bottom left, bottom right
-        self.POINTS = [(0, 0), (0, 0), (0, 0), (0, 0)]
+        self.POINTS = 4 * [(0, 0)]
         self.POINT_INDEX = 0
         self.MOUSE_POSITION = (0, 0)
 
-        def selectFourPoints():
+        def select_four_points():
             # let users select 4 points on WEBCAM GUI
             print("select 4 points, by double clicking on each of them in the order: \n\
             up right, up left, bottom right, bottom left.")
@@ -849,16 +705,20 @@ class Cityscopy:
                 # wait for clicks
                 cv2.setMouseCallback('canvas', save_this_point)
                 # read the WEBCAM frames
-                if self.using_realsense == False:
+                if not self.using_realsense:
                     _, self.FRAME = WEBCAM.read()
                 else:
                     self.FRAME = self.pipeline.wait_for_frames().get_color_frame()
 
-                if self.table_settings['mirror_cam'] is True:
-                    self.FRAME = cv2.flip(self.FRAME, 1)
-
-                if self.using_realsense == True:
+                if self.using_realsense:
                     self.FRAME = np.asanyarray(self.FRAME.get_data())
+
+                # mirror cam:
+                if self.table_settings['mirror_cam']:
+                    if not self.using_realsense:
+                        self.FRAME = cv2.flip(self.FRAME, 1)
+                    # else:
+                    #     self.FRAME = np.flip(self.FRAME, 1)
 
                 # draw mouse pos
                 cv2.circle(self.FRAME, self.MOUSE_POSITION, 10, (0, 0, 255), 1)
@@ -881,13 +741,80 @@ class Cityscopy:
                 # save this point to the array pts
                 self.POINTS[self.POINT_INDEX] = (x, y)
                 self.POINT_INDEX = self.POINT_INDEX + 1
+
         # checks if finished selecting the 4 corners
-        if selectFourPoints():
+        if select_four_points():
             np.savetxt(self.KEYSTONE_PATH, self.POINTS)
             print("keystone initial points were saved")
 
-        if self.using_realsense == False:
+        if not self.using_realsense:
             WEBCAM.release()
         else:
             self.pipeline.stop()
+
         cv2.destroyAllWindows()
+
+
+class Slider:
+    def __init__(self, config, video_res):
+        '''Set up a slider instance'''
+        self.id = config['id']
+        self.step_size = decimal.Decimal(str(config['step_size']))
+        self.y = config['y']          # y location (center)
+        self.x_min = config['x_min']  # x location of minimum slider position (centroid)
+        self.x_max = config['x_max']  # x location of maximum slider position (centroid)
+        # if video res is smaller than 1920x1080, calculate the slider according to its ratio
+        if video_res is not None and video_res[1] < 1080:
+            self.y = int(self.y/1080*video_res[1])
+            self.x_min = int(self.x_min/1920*video_res[0])
+            self.x_max = int(self.x_max/1920*video_res[0])
+
+    def evaluate(self, frame, video_res, block_size):
+        '''Extract slider value from the original image.
+
+        The slider tag should be as large as block_size.'''
+
+        self.y0 = int(max(self.y - block_size[1] / 2, 0))
+        self.y1 = int(min(self.y + block_size[1] / 2, video_res[1] - 1))
+        self.x0 = int(max(self.x_min - block_size[0] / 2, 0))
+        self.x1 = int(min(self.x_max + block_size[0] / 2, video_res[0] - 1))
+
+        slider_row = frame[self.y0:self.y1, self.x0:self.x1]
+
+        self.slider_coord = self.get_slider_coord(slider_row)
+
+        if self.slider_coord:
+            slider_x_max = self.x1 - self.x0 - block_size[0]
+            slider_value = min(max(
+                (self.slider_coord[0] - block_size[0] / 2) / slider_x_max, 0), 1)
+            # print(self.id, decimal.Decimal(slider_value).quantize(self.step_size, decimal.ROUND_HALF_UP))
+            # round according to step_size
+            return float(
+                decimal.Decimal(slider_value).quantize(self.step_size, decimal.ROUND_HALF_UP))
+
+    def draw(self, frame):
+        '''Draw slider range and current location onto image'''
+        cv2.line(frame, (self.x_min, self.y), (self.x_max, self.y), WHITE, 2)
+
+        if self.slider_coord:
+            cv2.line(frame,
+                     (self.x0 + self.slider_coord[0], self.y0 + self.slider_coord[1] - 20),
+                     (self.x0 + self.slider_coord[0], self.y0 + self.slider_coord[1] + 20),
+                     WHITE, 8)
+
+    def get_slider_coord(self, frame):
+        '''Get x,y of slider position in frame. Any black blob is considered a slider'''
+        # find contours
+        kernel = np.ones((7, 7), np.uint8)
+        mask = cv2.morphologyEx(frame, cv2.MORPH_CLOSE, kernel)
+        contours, _ = cv2.findContours(mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+
+        # get centroid of first contour
+        centroid = None
+        if len(contours) > 0:
+            moments = cv2.moments(contours[0])
+            if moments['m00'] > 0:
+                centroid = (int(moments['m10'] / moments['m00']),
+                            int(moments['m01'] / moments['m00']))
+
+        return centroid
