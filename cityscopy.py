@@ -348,17 +348,6 @@ class Cityscopy:
             }
 
             # send json if slider changed:
-            # if (val_now != previous_val):
-            #     eval_time = now()
-            #     eval = True
-            #     save_val = val_now
-
-            # if now() > eval_time + 1000:
-            #     if val_now is save_val:
-            #         send_message()
-            #         eval = False
-
-            # try: 
             for slider, value in mp_shared_dict['sliders'].items():
                 # first evaluation:
                 if evaluate_slider[slider] and value != previous_slider_value[slider] and value is not None:
@@ -372,13 +361,10 @@ class Cityscopy:
                     if value == value_eval_time[slider]:
                         self.send_json_to_UDP(mp_shared_dict['scan'])  # send message
                         previous_slider_value[slider] = value  # remember value
-                        print('slider val {0}:{1} sent '.format(slider, value), datetime.now(), "via %s:%s" % (self.UDP_IP, self.UDP_PORT))
+                        print('slider val {0} : {1} sent '.format(slider, value), datetime.now(), "via %s:%s" % (self.UDP_IP, self.UDP_PORT))
                         
                     reevaluate_slider[slider] = False  # stop re-evaluating
                     evaluate_slider[slider] = True  # start evaluation
-
-            # except Exception as e:
-            #     print("Error!", e)
 
             # reduce the colors based on a threshold
             binary_image = np.where(
@@ -801,6 +787,7 @@ class Slider:
             slider_x_max = self.x1 - self.x0 - block_size[0]
             slider_value = min(max(
                 (self.slider_coord[0] - block_size[0] / 2) / slider_x_max, 0), 1)
+            # print(self.id, decimal.Decimal(slider_value).quantize(self.step_size, decimal.ROUND_HALF_UP))
             # round according to step_size
             return float(
                 decimal.Decimal(slider_value).quantize(self.step_size, decimal.ROUND_HALF_UP))
