@@ -425,7 +425,7 @@ class Cityscopy:
                             (50, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
                 cv2.putText(keystoned_video, "grad2ient min:%2.2f max:%2.2f " % (self.gradient_min, self.gradient_max) + " [5,6 / 7,8]",
                             (50, 130), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
-                cv2.putText(keystoned_video, "active_slider: " + str(self.active_slider_idx) + " [left/right]",
+                cv2.putText(keystoned_video, "active_slider: " + str(self.active_slider_idx) + " [h]",
                             (50, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
                 cv2.putText(keystoned_video, "slider{0}_l: ".format(self.active_slider_idx) + str(self.sliders[self.active_slider_idx].slider_l) + " [</>]",
                             (50, 170), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
@@ -522,8 +522,8 @@ class Cityscopy:
             self.magnitude = 10 if self.magnitude == 1 else 1
             print("MAGNITUDE", self.magnitude)
 
-        elif key == '\n':
-            print("return pressed")
+        elif key == 'h':
+            self.active_slider_idx = (self.active_slider_idx + 1 ) % len(self.sliders)
 
         elif key in bgr_threshold_keys:
             if key == '+':
