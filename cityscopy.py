@@ -342,7 +342,7 @@ class Cityscopy:
             # get slider values
             mp_shared_dict['sliders'] = {
                 slider.id: slider.evaluate(np.where(
-                (ch_l <= slider.slider_l) & (ch_a <= slider.slider_a) & (ch_b <= slider.slider_b), 255, 0
+                (ch_l <= slider.l) & (ch_a <= slider.a) & (ch_b <= slider.b), 255, 0
                 ).astype(np.uint8), video_res, block_size)  # binary image slider
                 for slider in self.sliders
             }
@@ -425,9 +425,9 @@ class Cityscopy:
                             (50, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
                 cv2.putText(keystoned_video, "grad2ient min:%2.2f max:%2.2f " % (self.gradient_min, self.gradient_max) + " [5,6 / 7,8]",
                             (50, 130), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
-                cv2.putText(keystoned_video, "active_slider: " + str(self.active_slider_idx) + " [h]",
+                cv2.putText(keystoned_video, "active_slider: " + str(self.active_slider_idx) + " [j]",
                             (50, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
-                cv2.putText(keystoned_video, "slider{0}_l: ".format(self.active_slider_idx) + str(self.sliders[self.active_slider_idx].slider_l) + " [</>]",
+                cv2.putText(keystoned_video, "slider{0}_l: ".format(self.active_slider_idx) + str(self.sliders[self.active_slider_idx].l) + " [</>]",
                             (50, 170), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
                 cv2.putText(keystoned_video, "quantile: %2.2f" % self.quantile + " [y/x]",
                             (50, 190), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
@@ -522,7 +522,7 @@ class Cityscopy:
             self.magnitude = 10 if self.magnitude == 1 else 1
             print("MAGNITUDE", self.magnitude)
 
-        elif key == 'h':
+        elif key == 'j':
             self.active_slider_idx = (self.active_slider_idx + 1 ) % len(self.sliders)
 
         elif key in bgr_threshold_keys:
@@ -535,11 +535,11 @@ class Cityscopy:
 
         elif key in slider_threshold_keys:
             if key == '<':
-                self.sliders[self.active_slider_idx].slider_l += self.magnitude
-                print("slider luminance threshold at ", self.sliders[self.active_slider_idx].slider_l)
+                self.sliders[self.active_slider_idx].l += self.magnitude
+                print("slider luminance threshold at ", self.sliders[self.active_slider_idx].l)
             elif key == '>':
-                self.sliders[self.active_slider_idx].slider_l -= self.magnitude
-                print("slider luminance threshold at ", self.sliders[self.active_slider_idx].slider_l)
+                self.sliders[self.active_slider_idx].l -= self.magnitude
+                print("slider luminance threshold at ", self.sliders[self.active_slider_idx].l)
 
         elif key in corner_keys:
             self.selected_corner = key
@@ -774,9 +774,9 @@ class Slider:
             self.x_min = int(self.x_min/1920*video_res[0])
             self.x_max = int(self.x_max/1920*video_res[0])
 
-        self.slider_l = config['slider_l']
-        self.slider_a = config['slider_a']
-        self.slider_b = config['slider_b']
+        self.l = config['slider_l']
+        self.a = config['slider_a']
+        self.b = config['slider_b']
 
 
     def evaluate(self, frame, video_res, block_size):
