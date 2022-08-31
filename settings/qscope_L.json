@@ -12,7 +12,7 @@
         "gain": 2,
         "exposure": 478.0
     },
-    "max_l": 80,
+    "max_l": 70,
     "max_a": 255,
     "max_b": 132,
     "quantile": 0.56,
@@ -33,7 +33,7 @@
         {
             "id": "slider0",
             "step_size": 0.01,
-            "x_min": 124,
+            "x_min": 366,
             "x_max": 800,
             "y": 942,
             "slider_l": 65,
