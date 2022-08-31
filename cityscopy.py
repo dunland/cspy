@@ -78,7 +78,8 @@ class Cityscopy:
 
         # init corners variables
         self.selected_corner = None
-        self.magnitude = 1
+        self.magnitude = 1  # toggles 1 or 10
+        self.mag_increment = 1  # toggles 1 or -1
 
         # realsense camera parameters
         self.exposure = self.table_settings['realsense']['exposure']
@@ -110,12 +111,10 @@ class Cityscopy:
         self.max_l = self.table_settings.get('max_l', 127)
         self.max_a = self.table_settings.get('max_a', 255)
         self.max_b = self.table_settings.get('max_b', 255)
-        self.slider_l = self.table_settings.get('slider_l', 127)
-        self.slider_a = self.table_settings.get('slider_a', 255)
-        self.slider_b = self.table_settings.get('slider_b', 255)
         self.quantile = self.table_settings.get('quantile', 0.5)
 
         self.slider_last_sent = datetime.now()
+        self.active_slider_idx = 0
 
         if not self.using_realsense:
             video_capture = cv2.VideoCapture(self.table_settings['cam_id'])
@@ -270,7 +269,7 @@ class Cityscopy:
 
         previous_colors = []
         previous_slider_value = {slider.id : 0 for slider in self.sliders}
-        evaluate_slider = {slider.id : True for slider in self.sliders} 
+        evaluate_slider = {slider.id : True for slider in self.sliders}
         reevaluate_slider = {slider.id : False for slider in self.sliders}
         slider_eval_time = {slider.id : 0 for slider in self.sliders}
         value_eval_time = {slider.id : 0 for slider in self.sliders}
@@ -334,16 +333,18 @@ class Cityscopy:
             cv2.imshow("binary_image", binary_image)
             cv2.imshow("gradient_map", gradient_map)
             # reduce the colors based on slider threshold
-            binary_image_slider = np.where(
-                (ch_l <= self.slider_l) & (ch_a <= self.slider_a) & (ch_b <= self.slider_b), 255, 0
-                ).astype(np.uint8)
+            # binary_image_slider = np.where(
+            #     (ch_l <= self.slider_l) & (ch_a <= self.slider_a) & (ch_b <= self.slider_b), 255, 0
+            #     ).astype(np.uint8)
 
             # uncomment this to show intermediate image
             # cv2.imshow("binary_image_slider", binary_image_slider)
 
             # get slider values
             mp_shared_dict['sliders'] = {
-                slider.id: slider.evaluate(binary_image_slider, video_res, block_size)
+                slider.id: slider.evaluate(np.where(
+                (ch_l <= slider.l) & (ch_a <= slider.a) & (ch_b <= slider.b), 255, 0
+                ).astype(np.uint8), video_res, block_size)  # binary image slider
                 for slider in self.sliders
             }
 
@@ -362,7 +363,7 @@ class Cityscopy:
                         self.send_json_to_UDP(mp_shared_dict['scan'])  # send message
                         previous_slider_value[slider] = value  # remember value
                         print('slider val {0} : {1} sent '.format(slider, value), datetime.now(), "via %s:%s" % (self.UDP_IP, self.UDP_PORT))
-                        
+
                     reevaluate_slider[slider] = False  # stop re-evaluating
                     evaluate_slider[slider] = True  # start evaluation
 
@@ -415,20 +416,40 @@ class Cityscopy:
 
                 # draw arrow to interaction area
                 self.ui_selected_corner(video_res[0], video_res[1], keystoned_video)
+                text_y = 50
                 cv2.putText(keystoned_video, "magnitude: " + str(self.magnitude) + " [SPACE]",
-                            (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
-                cv2.putText(keystoned_video, "exposure: " + str(self.exposure) + " [e/r]",
-                            (50, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
-                cv2.putText(keystoned_video, "gain: " + str(self.gain) + " [g/h]",
-                            (50, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
-                cv2.putText(keystoned_video, "max_l: " + str(self.max_l) + " [+/-]",
-                            (50, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
-                cv2.putText(keystoned_video, "grad2ient min:%2.2f max:%2.2f " % (self.gradient_min, self.gradient_max) + " [5,6 / 7,8]",
-                            (50, 130), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
-                cv2.putText(keystoned_video, "slider_l: " + str(self.slider_l) + " [</>]",
-                            (50, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
-                cv2.putText(keystoned_video, "quantile: %2.2f" % self.quantile + " [y/x]",
-                            (50, 170), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
+                            (50, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
+                text_y += 20
+                cv2.putText(keystoned_video, "increment: " + str(self.mag_increment) + " [+/-]",
+                            (50, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
+                text_y += 20
+                cv2.putText(keystoned_video, "exposure: " + str(self.exposure) + " [e]",
+                            (50, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
+                text_y += 20
+                cv2.putText(keystoned_video, "gain: " + str(self.gain) + " [g]",
+                            (50, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
+                text_y += 20
+                cv2.putText(keystoned_video, "max_l: " + str(self.max_l) + " [c]",
+                            (50, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
+                text_y += 20
+                cv2.putText(keystoned_video, "gradient min:%2.2f max:%2.2f " % (self.gradient_min, self.gradient_max) + " [5 / 6]",
+                            (50, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
+                text_y += 20
+                cv2.putText(keystoned_video, "quantile: %2.2f" % self.quantile + " [q]",
+                            (50, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
+                text_y += 20
+                text_y += 20
+                cv2.putText(keystoned_video, "active_slider: " + str(self.active_slider_idx) + " [j]",
+                            (50, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
+                text_y += 20
+                cv2.putText(keystoned_video, "slider{0}_l: ".format(self.active_slider_idx) + str(self.sliders[self.active_slider_idx].l) + " [l]",
+                            (50, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
+                text_y += 20
+                cv2.putText(keystoned_video, "slider{0}_a: ".format(self.active_slider_idx) + str(self.sliders[self.active_slider_idx].a) + " [a]",
+                            (50, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
+                text_y += 20
+                cv2.putText(keystoned_video, "slider{0}_b: ".format(self.active_slider_idx) + str(self.sliders[self.active_slider_idx].b) + " [b]",
+                            (50, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
 
             # draw the video to screen
             cv2.imshow("scanner_gui_window", keystoned_video)
@@ -512,29 +533,29 @@ class Cityscopy:
         corner_keys = ['1', '2', '3', '4']
         move_keys = ['w', 'a', 's', 'd']
         realsense_keys = ['e', 'r', 'g', 'h']
-        bgr_threshold_keys = ['+', '-']
-        slider_threshold_keys = ['<','>']
         key = chr(cv2.waitKey(1) & 255)
 
+        # general adjustment:
         if key == ' ':
             self.magnitude = 10 if self.magnitude == 1 else 1
             print("MAGNITUDE", self.magnitude)
+        elif key == '+':
+            self.mag_increment = 1
+        elif key == '-':
+            self.mag_increment = -1
 
-        elif key in bgr_threshold_keys:
-            if key == '+':
-                self.max_l += self.magnitude
-                print("luminance threshold at ", self.max_l)
-            elif key == '-':
-                self.max_l -= self.magnitude
-                print("luminance threshold at ", self.max_l)
-
-        elif key in slider_threshold_keys:
-            if key == '<':
-                self.slider_l += self.magnitude
-                print("slider luminance threshold at ", self.slider_l)
-            elif key == '>':
-                self.slider_l -= self.magnitude
-                print("slider luminance threshold at ", self.slider_l)
+        # slider:
+        elif key == 'j':
+            self.active_slider_idx = (self.active_slider_idx + 1 ) % len(self.sliders)
+        elif key == 'l':
+                self.sliders[self.active_slider_idx].l += self.magnitude * self.mag_increment
+                print("slider luminance threshold at ", self.sliders[self.active_slider_idx].l)
+        elif key == 'a':
+                self.sliders[self.active_slider_idx].a += self.magnitude * self.mag_increment
+                print("slider a value at ", self.sliders[self.active_slider_idx].a)
+        elif key == 'b':
+                self.sliders[self.active_slider_idx].b += self.magnitude * self.mag_increment
+                print("slider b value at ", self.sliders[self.active_slider_idx].b)
 
         elif key in corner_keys:
             self.selected_corner = key
@@ -544,9 +565,9 @@ class Cityscopy:
                 if key == 'd':
                     self.init_keystone[0][0] -= self.magnitude
                 elif key == 'a':
-                    self.init_keystone[0][0] += self.magnitude
+                    self.init_keystone[0][0] += self.magnitude * self.mag_increment
                 elif key == 'w':
-                    self.init_keystone[0][1] += self.magnitude
+                    self.init_keystone[0][1] += self.magnitude * self.mag_increment
                 elif key == 's':
                     self.init_keystone[0][1] -= self.magnitude
 
@@ -554,9 +575,9 @@ class Cityscopy:
                 if key == 'd':
                     self.init_keystone[1][0] -= self.magnitude
                 elif key == 'a':
-                    self.init_keystone[1][0] += self.magnitude
+                    self.init_keystone[1][0] += self.magnitude * self.mag_increment
                 elif key == 'w':
-                    self.init_keystone[1][1] += self.magnitude
+                    self.init_keystone[1][1] += self.magnitude * self.mag_increment
                 elif key == 's':
                     self.init_keystone[1][1] -= self.magnitude
 
@@ -564,9 +585,9 @@ class Cityscopy:
                 if key == 'd':
                     self.init_keystone[2][0] -= self.magnitude
                 elif key == 'a':
-                    self.init_keystone[2][0] += self.magnitude
+                    self.init_keystone[2][0] += self.magnitude * self.mag_increment
                 elif key == 'w':
-                    self.init_keystone[2][1] += self.magnitude
+                    self.init_keystone[2][1] += self.magnitude * self.mag_increment
                 elif key == 's':
                     self.init_keystone[2][1] -= self.magnitude
 
@@ -574,24 +595,23 @@ class Cityscopy:
                 if key == 'd':
                     self.init_keystone[3][0] -= self.magnitude
                 elif key == 'a':
-                    self.init_keystone[3][0] += self.magnitude
+                    self.init_keystone[3][0] += self.magnitude * self.mag_increment
                 elif key == 'w':
-                    self.init_keystone[3][1] += self.magnitude
+                    self.init_keystone[3][1] += self.magnitude * self.mag_increment
                 elif key == 's':
                     self.init_keystone[3][1] -= self.magnitude
 
         elif key == '5':
-            self.gradient_min += self.magnitude / 100
+            self.gradient_min += self.magnitude * self.mag_increment / 100
         elif key == '6':
-            self.gradient_min -= self.magnitude / 100
-        elif key == '7':
-            self.gradient_max += self.magnitude / 100
-        elif key == '8':
-            self.gradient_max -= self.magnitude / 100
-        elif key == 'y':
-            self.quantile += self.magnitude / 100
-        elif key == 'x':
-            self.quantile -= self.magnitude / 100
+            self.gradient_max += self.magnitude * self.mag_increment / 100
+        elif key == 'q':
+            self.quantile += self.magnitude * self.mag_increment / 100
+
+        elif key == 'c':
+            self.max_l += self.magnitude * self.mag_increment
+            print("luminance threshold at ", self.max_l)
+
 
         # save to file
         elif key == 'k':
@@ -602,27 +622,29 @@ class Cityscopy:
         # realsense exposure control
         if self.using_realsense:
             if key in realsense_keys:
-                # increase exposure
                 if key == 'e':
-                    self.exposure = self.device.get_option(rs.option.exposure)
-                    self.device.set_option(rs.option.exposure, self.exposure + self.magnitude)
+                    # increase exposure
+                    if self.mag_increment == 1:
+                        self.exposure = self.device.get_option(rs.option.exposure)
+                        self.device.set_option(rs.option.exposure, self.exposure + self.magnitude)
 
-                # decrease exposure
-                elif key == 'r':
-                    self.exposure = self.device.get_option(rs.option.exposure)
-                    if self.exposure > 1:
-                        self.device.set_option(rs.option.exposure, self.exposure - self.magnitude)
+                    # decrease exposure
+                    else:
+                        self.exposure = self.device.get_option(rs.option.exposure)
+                        if self.exposure > 1:
+                            self.device.set_option(rs.option.exposure, self.exposure - self.magnitude)
 
-                # increase gain
                 elif key == 'g':
-                    self.gain = self.device.get_option(rs.option.gain)
-                    self.device.set_option(rs.option.gain, self.gain + self.magnitude)
+                    # increase gain
+                    if self.mag_increment == 1:
+                        self.gain = self.device.get_option(rs.option.gain)
+                        self.device.set_option(rs.option.gain, self.gain + self.magnitude)
 
-                # decrease gain
-                elif key == 'h':
-                    self.gain = self.device.get_option(rs.option.gain)
-                    if self.gain > 1:
-                        self.device.set_option(rs.option.gain, self.gain - self.magnitude)
+                    # decrease gain
+                    else:
+                        self.gain = self.device.get_option(rs.option.gain)
+                        if self.gain > 1:
+                            self.device.set_option(rs.option.gain, self.gain - self.magnitude)
 
                 print("exposure:", self.device.get_option(rs.option.exposure),
                       "gain:", self.device.get_option(rs.option.gain))
@@ -768,6 +790,11 @@ class Slider:
             self.y = int(self.y/1080*video_res[1])
             self.x_min = int(self.x_min/1920*video_res[0])
             self.x_max = int(self.x_max/1920*video_res[0])
+
+        self.l = config['slider_l']
+        self.a = config['slider_a']
+        self.b = config['slider_b']
+
 
     def evaluate(self, frame, video_res, block_size):
         '''Extract slider value from the original image.

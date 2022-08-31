@@ -1,0 +1,57 @@
+{
+    "PORT": 5001,
+    "nrows": 19,
+    "ncols": 22,
+    "grid_w": 1920,
+    "grid_h": 900,
+    "cam_id": 0,
+    "realsense": {
+        "device_num" : 1,
+        "active": true,
+        "exposure:": 100,
+        "gain": 2,
+        "exposure": 478.0
+    },
+    "max_l": 70,
+    "max_a": 255,
+    "max_b": 132,
+    "quantile": 0.56,
+    "gradient_min": 0.9,
+    "gradient_max": 0.7,
+    "interval": 1000,
+    "gui": true,
+    "tag_length": 4,
+    "tags": [
+        "0000",
+        "1111",
+        "1110",
+        "1100",
+        "1001",
+        "1000"
+    ],
+    "sliders": [
+        {
+            "id": "slider0",
+            "step_size": 0.01,
+            "x_min": 366,
+            "x_max": 800,
+            "y": 942,
+            "slider_l": 65,
+            "slider_a": 255,
+            "slider_b": 132
+        
+        },
+        {
+            "id": "slider1",
+            "step_size": 0.01,
+            "x_min": 1162,
+            "x_max": 1680,
+            "y": 936,
+            "slider_l": 65,
+            "slider_a": 255,
+            "slider_b": 132        
+        }
+     ],
+    "mirror_cam": true,
+    "rotate_image": false
+}
