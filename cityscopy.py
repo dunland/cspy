@@ -445,7 +445,7 @@ class Cityscopy:
                 cv2.putText(keystoned_video, "slider{0}_l: ".format(self.active_slider_idx) + str(self.sliders[self.active_slider_idx].l) + " [l]",
                             (50, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
                 text_y += 20
-                cv2.putText(keystoned_video, "slider{0}_a: ".format(self.active_slider_idx) + str(self.sliders[self.active_slider_idx].a) + " [a]",
+                cv2.putText(keystoned_video, "slider{0}_a: ".format(self.active_slider_idx) + str(self.sliders[self.active_slider_idx].a) + " [f]",
                             (50, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
                 text_y += 20
                 cv2.putText(keystoned_video, "slider{0}_b: ".format(self.active_slider_idx) + str(self.sliders[self.active_slider_idx].b) + " [b]",
@@ -550,7 +550,7 @@ class Cityscopy:
         elif key == 'l':
                 self.sliders[self.active_slider_idx].l += self.magnitude * self.mag_increment
                 print("slider luminance threshold at ", self.sliders[self.active_slider_idx].l)
-        elif key == 'a':
+        elif key == 'f':
                 self.sliders[self.active_slider_idx].a += self.magnitude * self.mag_increment
                 print("slider a value at ", self.sliders[self.active_slider_idx].a)
         elif key == 'b':
