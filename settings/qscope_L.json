@@ -15,10 +15,10 @@
     "max_l": 70,
     "max_a": 255,
     "max_b": 132,
-    "quantile": 0.56,
+    "quantile": 0.66,
     "gradient_min": 0.9,
     "gradient_max": 0.7,
-    "interval": 1000,
+    "interval": 500,
     "gui": true,
     "tag_length": 4,
     "tags": [
@@ -33,10 +33,10 @@
         {
             "id": "slider0",
             "step_size": 0.01,
-            "x_min": 366,
+            "x_min": 131,
             "x_max": 800,
-            "y": 942,
-            "slider_l": 65,
+            "y": 936,
+            "slider_l": 75,
             "slider_a": 255,
             "slider_b": 132
 
@@ -46,7 +46,7 @@
             "step_size": 0.01,
             "x_min": 1162,
             "x_max": 1680,
-            "y": 936,
+            "y": 929,
             "slider_l": 65,
             "slider_a": 255,
             "slider_b": 132
