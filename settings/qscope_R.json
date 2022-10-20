@@ -17,8 +17,8 @@
     "max_b": 132,
     "quantile": 0.56,
     "gradient_min": 0.9,
-    "gradient_max": 0.7,
-    "interval": 1000,
+    "gradient_max": 0.6,
+    "interval": 500,
     "gui": true,
     "tag_length": 4,
     "tags": [
@@ -35,8 +35,8 @@
             "step_size": 0.01,
             "x_min": 129,
             "x_max": 775,
-            "y": 943,
-            "slider_l": 86,
+            "y": 936,
+            "slider_l": 79,
             "slider_a": 255,
             "slider_b": 132
         }
