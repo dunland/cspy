@@ -22,12 +22,12 @@
     "gui": true,
     "tag_length": 4,
     "tags": [
-        "0000",
         "1111",
         "1110",
         "1100",
         "1001",
-        "1000"
+        "1000",
+        "0000"
     ],
     "sliders": [
         {
@@ -39,7 +39,7 @@
             "slider_l": 65,
             "slider_a": 255,
             "slider_b": 132
-        
+
         },
         {
             "id": "slider1",
@@ -49,7 +49,7 @@
             "y": 936,
             "slider_l": 65,
             "slider_a": 255,
-            "slider_b": 132        
+            "slider_b": 132
         }
      ],
     "mirror_cam": true,
