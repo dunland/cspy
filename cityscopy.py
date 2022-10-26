@@ -439,7 +439,7 @@ class Cityscopy:
                             (50, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
                 text_y += 20
                 text_y += 20
-                cv2.putText(keystoned_video, "active_slider: " + str(self.active_slider_idx) + " [j]",
+                cv2.putText(keystoned_video, "active_slider: " + self.sliders[self.active_slider_idx].id + " [j]",
                             (50, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
                 text_y += 20
                 cv2.putText(keystoned_video, "slider{0}_l: ".format(self.active_slider_idx) + str(self.sliders[self.active_slider_idx].l) + " [l]",
@@ -606,7 +606,7 @@ class Cityscopy:
         elif key == '6':
             self.gradient_max += self.magnitude * self.mag_increment / 100
         elif key == 'q':
-            self.quantile += self.magnitude * self.mag_increment / 100
+            self.quantile = min(1.0, max(self.quantile + self.magnitude * self.mag_increment / 100, 0.0))
 
         elif key == 'c':
             self.max_l += self.magnitude * self.mag_increment
@@ -791,9 +791,9 @@ class Slider:
             self.x_min = int(self.x_min/1920*video_res[0])
             self.x_max = int(self.x_max/1920*video_res[0])
 
-        self.l = config['slider_l']
-        self.a = config['slider_a']
-        self.b = config['slider_b']
+        self.l = config['slider_l']  # lightness
+        self.a = config['slider_a']  # red/green value
+        self.b = config['slider_b']  # blue/yellow value
 
 
     def evaluate(self, frame, video_res, block_size):
