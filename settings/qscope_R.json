@@ -8,16 +8,15 @@
     "realsense": {
         "device_num": 0,
         "active": true,
-        "exposure:": 100,
-        "gain": 2,
-        "exposure": 478.0
+        "exposure": 528.0,
+        "gain": 2
     },
     "max_l": 80,
     "max_a": 255,
     "max_b": 132,
-    "quantile": 0.56,
-    "gradient_min": 0.9,
+    "gradient_min": 0.93,
     "gradient_max": 0.6,
+    "quantile": 0.39,
     "interval": 500,
     "gui": true,
     "tag_length": 4,
@@ -36,17 +35,17 @@
             "x_min": 129,
             "x_max": 775,
             "y": 936,
-            "slider_l": 79,
+            "slider_l": 65,
             "slider_a": 255,
             "slider_b": 132
         },
         {
             "id": "slider3",
             "step_size": 0.01,
-            "x_min": 1172,
+            "x_min": 1193,
             "x_max": 1770,
             "y": 936,
-            "slider_l": 69,
+            "slider_l": 67,
             "slider_a": 255,
             "slider_b": 132
         }
