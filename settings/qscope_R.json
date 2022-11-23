@@ -22,11 +22,11 @@
     "gui": true,
     "tag_length": 4,
     "tags": [
-        "1111",
         "1110",
         "1100",
         "1001",
         "1000",
+        "1111",
         "0000"
     ],
     "sliders": [
@@ -37,6 +37,16 @@
             "x_max": 775,
             "y": 936,
             "slider_l": 79,
+            "slider_a": 255,
+            "slider_b": 132
+        },
+        {
+            "id": "slider3",
+            "step_size": 0.01,
+            "x_min": 1172,
+            "x_max": 1770,
+            "y": 936,
+            "slider_l": 69,
             "slider_a": 255,
             "slider_b": 132
         }
