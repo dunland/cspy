@@ -69,6 +69,7 @@ WHITE = (255, 255, 255)
 class Cityscopy:
     def __init__(self, path):
         # load info from json file
+        self.settings_path = path
         with open(path) as settings:
             self.table_settings = json.load(settings)
 
@@ -81,22 +82,13 @@ class Cityscopy:
         self.magnitude = 1  # toggles 1 or 10
         self.mag_increment = 1  # toggles 1 or -1
 
-        # realsense camera parameters
-        self.exposure = self.table_settings['realsense']['exposure']
-        self.gain = self.table_settings['realsense']['gain']
-        self.using_realsense = self.table_settings['realsense']['active']
-
-        # gradient for uneven light compensation
-        self.gradient_min = self.table_settings['gradient_min']
-        self.gradient_max = self.table_settings['gradient_max']
-
         # setup camera
-        if self.using_realsense:
+        if self.table_settings['realsense']['active']:
             try:
                 self.realsense_init()
             except Exception:
                 print("cannot load realsense. Not connected?")
-                self.using_realsense = False
+                self.table_settings['realsense']['active'] = False
 
         # tags
         self.tag_length = self.table_settings.get('tag_length', 4)
@@ -116,12 +108,13 @@ class Cityscopy:
         self.slider_last_sent = datetime.now()
         self.active_slider_idx = 0
 
-        if not self.using_realsense:
+        if not self.table_settings['realsense']['active']:
             video_capture = cv2.VideoCapture(self.table_settings['cam_id'])
             video_res = (int(video_capture.get(3)), int(video_capture.get(4)))
             self.sliders = [
                 Slider(options, video_res) for options in self.table_settings.get('sliders', [])
             ]
+            print("starting at resolution", video_res)
         else:
             video_res = (int(self.pipeline.wait_for_frames().get_color_frame().get_width()),
                          int(self.pipeline.wait_for_frames().get_color_frame().get_height()))
@@ -189,8 +182,8 @@ class Cityscopy:
 
         # set sensitivity parameters:
         self.device = pipeline_profile.get_device().first_color_sensor()
-        self.device.set_option(rs.option.exposure, self.exposure)
-        self.device.set_option(rs.option.gain, self.gain)
+        self.device.set_option(rs.option.exposure, self.table_settings['realsense']['exposure'])
+        self.device.set_option(rs.option.gain, self.table_settings['realsense']['gain'])
 
         print("success!")
         print("Realsense initialization complete.")
@@ -228,10 +221,10 @@ class Cityscopy:
         # serial num of camera, to switch between cameras
         camPos = self.table_settings['cam_id']
 
-        if not self.using_realsense:
+        if not self.table_settings['realsense']['active']:
             video_capture = cv2.VideoCapture(camPos)
 
-        if self.using_realsense:
+        if self.table_settings['realsense']['active']:
             video_res = (int(self.pipeline.wait_for_frames().get_color_frame().get_width()),
                          int(self.pipeline.wait_for_frames().get_color_frame().get_height()))
         else:
@@ -279,7 +272,7 @@ class Cityscopy:
 
         # run the video loop forever
         while True:
-            if self.using_realsense:
+            if self.table_settings['realsense']['active']:
                 frames = self.pipeline.wait_for_frames()  # returns composite_frame
                 color_frame = frames.get_color_frame()  # returns video_frame
                 color_frame = np.asanyarray(color_frame.get_data())
@@ -294,14 +287,14 @@ class Cityscopy:
 
             # mirror camera (webcam)
             if self.table_settings['mirror_cam']:
-                if self.using_realsense:
+                if self.table_settings['realsense']['active']:
                     color_frame = np.flip(color_frame, 1)
                 else:
                     color_frame = cv2.flip(color_frame, 1)
 
             # rotate image
             if self.table_settings['rotate_image']:
-                if self.using_realsense:
+                if self.table_settings['realsense']['active']:
                     color_frame = np.rot90(color_frame, 2)
                 else:
                     color_frame = cv2.rotate(color_frame, rotateCode=cv2.ROTATE_180)
@@ -320,7 +313,7 @@ class Cityscopy:
 
             # sensitivity gradient to compensate unevenly distributed light
             ch_l_rows, ch_l_cols = ch_l.shape
-            gradient_map = np.tile(np.linspace(self.gradient_min, self.gradient_max, ch_l_rows), (ch_l_cols, 1)).T
+            gradient_map = np.tile(np.linspace(self.table_settings['gradient_min'], self.table_settings['gradient_max'], ch_l_rows), (ch_l_cols, 1)).T
 
             lab_image = np.multiply(lab_image, np.repeat(gradient_map, 3).reshape(lab_image.shape))
             ch_l, ch_a, ch_b = cv2.split(lab_image)
@@ -423,17 +416,18 @@ class Cityscopy:
                 text_y += 20
                 cv2.putText(keystoned_video, "increment: " + str(self.mag_increment) + " [+/-]",
                             (50, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
-                text_y += 20
-                cv2.putText(keystoned_video, "exposure: " + str(self.exposure) + " [e]",
-                            (50, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
-                text_y += 20
-                cv2.putText(keystoned_video, "gain: " + str(self.gain) + " [g]",
-                            (50, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
+                if self.table_settings['realsense']['active']:
+                    text_y += 20
+                    cv2.putText(keystoned_video, "exposure: " + str(self.table_settings['realsense']['exposure']) + " [e]",
+                                (50, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
+                    text_y += 20
+                    cv2.putText(keystoned_video, "gain: " + str(self.table_settings['realsense']['gain']) + " [g]",
+                                (50, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
                 text_y += 20
                 cv2.putText(keystoned_video, "max_l: " + str(self.max_l) + " [v]",
                             (50, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
                 text_y += 20
-                cv2.putText(keystoned_video, "gradient min:%2.2f max:%2.2f " % (self.gradient_min, self.gradient_max) + " [5 / 6]",
+                cv2.putText(keystoned_video, "gradient min:%2.2f max:%2.2f " % (self.table_settings['gradient_min'], self.table_settings['gradient_max']) + " [5 / 6]",
                             (50, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
                 text_y += 20
                 cv2.putText(keystoned_video, "quantile: %2.2f" % self.quantile + " [q]",
@@ -618,9 +612,9 @@ class Cityscopy:
                     self.init_keystone[3][1] -= self.magnitude
 
         elif key == '5':
-            self.gradient_min += self.magnitude * self.mag_increment / 100
+            self.table_settings['gradient_min'] += self.magnitude * self.mag_increment / 100
         elif key == '6':
-            self.gradient_max += self.magnitude * self.mag_increment / 100
+            self.table_settings['gradient_max'] += self.magnitude * self.mag_increment / 100
         elif key == 'q':
             self.quantile = min(1.0, max(self.quantile + self.magnitude * self.mag_increment / 100, 0.0))
 
@@ -634,33 +628,34 @@ class Cityscopy:
             # reset selected corner
             self.selected_corner = None
             self.save_keystone_to_file(self.init_keystone)
+            self.save_calibration_to_file()
 
         # realsense exposure control
-        if self.using_realsense:
+        if self.table_settings['realsense']['active']:
             if key in realsense_keys:
                 if key == 'e':
                     # increase exposure
                     if self.mag_increment == 1:
-                        self.exposure = self.device.get_option(rs.option.exposure)
-                        self.device.set_option(rs.option.exposure, self.exposure + self.magnitude)
+                        self.table_settings['realsense']['exposure'] = self.device.get_option(rs.option.exposure)
+                        self.device.set_option(rs.option.exposure, self.table_settings['realsense']['exposure'] + self.magnitude)
 
                     # decrease exposure
                     else:
-                        self.exposure = self.device.get_option(rs.option.exposure)
-                        if self.exposure > 1:
-                            self.device.set_option(rs.option.exposure, self.exposure - self.magnitude)
+                        self.table_settings['realsense']['exposure'] = self.device.get_option(rs.option.exposure)
+                        if self.table_settings['realsense']['exposure'] > 1:
+                            self.device.set_option(rs.option.exposure, self.table_settings['realsense']['exposure'] - self.magnitude)
 
                 elif key == 'g':
                     # increase gain
                     if self.mag_increment == 1:
-                        self.gain = self.device.get_option(rs.option.gain)
-                        self.device.set_option(rs.option.gain, self.gain + self.magnitude)
+                        self.table_settings['realsense']['gain'] = self.device.get_option(rs.option.gain)
+                        self.device.set_option(rs.option.gain, self.table_settings['realsense']['gain'] + self.magnitude)
 
                     # decrease gain
                     else:
-                        self.gain = self.device.get_option(rs.option.gain)
-                        if self.gain > 1:
-                            self.device.set_option(rs.option.gain, self.gain - self.magnitude)
+                        self.table_settings['realsense']['gain'] = self.device.get_option(rs.option.gain)
+                        if self.table_settings['realsense']['gain'] > 1:
+                            self.device.set_option(rs.option.gain, self.table_settings['realsense']['gain'] - self.magnitude)
 
                 print("exposure:", self.device.get_option(rs.option.exposure),
                       "gain:", self.device.get_option(rs.option.gain))
@@ -680,6 +675,29 @@ class Cityscopy:
         filePath = self.get_folder_path() + "keystone.txt"
         np.savetxt(filePath, keystone_data_from_user_interaction)
         print("[!] keystone points were saved in", filePath)
+
+    def save_calibration_to_file(self):
+
+        # update table_settings from variables:
+        self.table_settings['max_l'] = self.max_l
+        self.table_settings['max_a'] = self.max_a
+        self.table_settings['max_b'] = self.max_b
+
+        for i in range(2):
+            self.table_settings['sliders'][i]['x_min'] = self.sliders[i].x_min
+            self.table_settings['sliders'][i]['x_max'] = self.sliders[i].x_max
+            self.table_settings['sliders'][i]['y'] = self.sliders[i].y
+            self.table_settings['sliders'][i]['slider_l'] = self.sliders[i].l
+            self.table_settings['sliders'][i]['slider_a'] = self.sliders[i].a
+            self.table_settings['sliders'][i]['slider_b'] = self.sliders[i].b
+
+
+        self.table_settings['quantile'] = self.quantile
+
+        with open(self.settings_path, 'w') as outfile:
+            json.dump(self.table_settings, outfile, indent=4)
+            print("wrote file to", self.settings_path)
+            outfile.close()
 
     def transform_matrix(self, video_res, keyStonePts):
         '''
@@ -714,10 +732,10 @@ class Cityscopy:
 
         # serial num of camera, to switch between cameras
         camPos = self.table_settings['cam_id']
-        self.using_realsense = self.table_settings['realsense']['active']
+        self.table_settings['realsense']['active'] = self.table_settings['realsense']['active']
 
         # try from a device 1 in list, not default webcam
-        if not self.using_realsense:
+        if not self.table_settings['realsense']['active']:
             WEBCAM = cv2.VideoCapture(camPos)
 
         time.sleep(1)
@@ -743,17 +761,17 @@ class Cityscopy:
                 # wait for clicks
                 cv2.setMouseCallback('canvas', save_this_point)
                 # read the WEBCAM frames
-                if not self.using_realsense:
+                if not self.table_settings['realsense']['active']:
                     _, self.FRAME = WEBCAM.read()
                 else:
                     self.FRAME = self.pipeline.wait_for_frames().get_color_frame()
 
-                if self.using_realsense:
+                if self.table_settings['realsense']['active']:
                     self.FRAME = np.asanyarray(self.FRAME.get_data())
 
                 # mirror cam:
                 if self.table_settings['mirror_cam']:
-                    if not self.using_realsense:
+                    if not self.table_settings['realsense']['active']:
                         self.FRAME = cv2.flip(self.FRAME, 1)
                     # else:
                     #     self.FRAME = np.flip(self.FRAME, 1)
@@ -785,7 +803,7 @@ class Cityscopy:
             np.savetxt(self.KEYSTONE_PATH, self.POINTS)
             print("keystone initial points were saved")
 
-        if not self.using_realsense:
+        if not self.table_settings['realsense']['active']:
             WEBCAM.release()
         else:
             self.pipeline.stop()
@@ -802,6 +820,7 @@ class Slider:
         self.x_min = config['x_min']  # x location of minimum slider position (centroid)
         self.x_max = config['x_max']  # x location of maximum slider position (centroid)
         # if video res is smaller than 1920x1080, calculate the slider according to its ratio
+        # TODO: place this right!
         if video_res is not None and video_res[1] < 1080:
             self.y = int(self.y/1080*video_res[1])
             self.x_min = int(self.x_min/1920*video_res[0])
