@@ -430,7 +430,7 @@ class Cityscopy:
                 cv2.putText(keystoned_video, "gain: " + str(self.gain) + " [g]",
                             (50, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
                 text_y += 20
-                cv2.putText(keystoned_video, "max_l: " + str(self.max_l) + " [c]",
+                cv2.putText(keystoned_video, "max_l: " + str(self.max_l) + " [v]",
                             (50, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
                 text_y += 20
                 cv2.putText(keystoned_video, "gradient min:%2.2f max:%2.2f " % (self.gradient_min, self.gradient_max) + " [5 / 6]",
@@ -450,6 +450,15 @@ class Cityscopy:
                             (50, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
                 text_y += 20
                 cv2.putText(keystoned_video, "slider{0}_b: ".format(self.active_slider_idx) + str(self.sliders[self.active_slider_idx].b) + " [b]",
+                            (50, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
+                text_y += 20
+                cv2.putText(keystoned_video, "slider{0}_y-pos: ".format(self.active_slider_idx) + str(self.sliders[self.active_slider_idx].y) + " [y]",
+                            (50, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
+                text_y += 20
+                cv2.putText(keystoned_video, "slider{0}_x-min: ".format(self.active_slider_idx) + str(self.sliders[self.active_slider_idx].x_min) + " [x]",
+                            (50, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
+                text_y += 20
+                cv2.putText(keystoned_video, "slider{0}_x-max: ".format(self.active_slider_idx) + str(self.sliders[self.active_slider_idx].x_max) + " [c]",
                             (50, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
 
             # draw the video to screen
@@ -557,6 +566,12 @@ class Cityscopy:
         elif key == 'b':
                 self.sliders[self.active_slider_idx].b += self.magnitude * self.mag_increment
                 print("slider b value at ", self.sliders[self.active_slider_idx].b)
+        elif key == 'y':
+                self.sliders[self.active_slider_idx].y += self.magnitude * self.mag_increment
+        elif key == 'x':
+                self.sliders[self.active_slider_idx].x_min += self.magnitude * self.mag_increment
+        elif key == 'c':
+                self.sliders[self.active_slider_idx].x_max += self.magnitude * self.mag_increment
 
         elif key in corner_keys:
             self.selected_corner = key
@@ -609,7 +624,7 @@ class Cityscopy:
         elif key == 'q':
             self.quantile = min(1.0, max(self.quantile + self.magnitude * self.mag_increment / 100, 0.0))
 
-        elif key == 'c':
+        elif key == 'v':
             self.max_l += self.magnitude * self.mag_increment
             print("luminance threshold at ", self.max_l)
 
