@@ -1,5 +1,6 @@
 {
     "PORT": 5001,
+    "table_name": "L",
     "nrows": 19,
     "ncols": 22,
     "grid_w": 1920,

@@ -238,8 +238,8 @@ class Cityscopy:
             video_res = (int(video_capture.get(3)), int(video_capture.get(4)))
 
         # define the video windows
-        cv2.namedWindow('scanner_gui_window', cv2.WINDOW_NORMAL)
-        cv2.resizeWindow('scanner_gui_window', 1920,1080)
+        cv2.namedWindow('scanner_gui_window' + self.table_settings['table_name'], cv2.WINDOW_NORMAL)
+        cv2.resizeWindow('scanner_gui_window' + self.table_settings['table_name'], 1920,1080)
         cv2.namedWindow('binary_image', cv2.WINDOW_NORMAL)
         cv2.namedWindow('gradient_map', cv2.WINDOW_NORMAL)
         cv2.moveWindow('binary_image', 1921,0)
