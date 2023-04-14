@@ -238,14 +238,15 @@ class Cityscopy:
             video_res = (int(video_capture.get(3)), int(video_capture.get(4)))
 
         # define the video windows
-        cv2.namedWindow('scanner_gui_window' + self.table_settings['table_name'], cv2.WINDOW_NORMAL)
-        cv2.resizeWindow('scanner_gui_window' + self.table_settings['table_name'], 1920,1080)
-        cv2.namedWindow('binary_image', cv2.WINDOW_NORMAL)
-        cv2.namedWindow('gradient_map', cv2.WINDOW_NORMAL)
-        cv2.moveWindow('binary_image', 1921,0)
-        cv2.moveWindow('gradient_map', 2721,0)
-        cv2.resizeWindow('binary_image', 800,800)
-        cv2.resizeWindow('gradient_map', 800,800)
+        table_name = self.table_settings['table_name']
+        cv2.namedWindow('scanner_gui_window_' + table_name, cv2.WINDOW_NORMAL)
+        cv2.resizeWindow('scanner_gui_window_' + table_name, 1920,1080)
+        cv2.namedWindow('binary_image_' + table_name, cv2.WINDOW_NORMAL)
+        cv2.namedWindow('gradient_map_' + table_name, cv2.WINDOW_NORMAL)
+        cv2.moveWindow('binary_image_' + table_name, 1921,0)
+        cv2.moveWindow('gradient_map_' + table_name, 2721,0)
+        cv2.resizeWindow('binary_image_' + table_name, 800,800)
+        cv2.resizeWindow('gradient_map_' + table_name, 800,800)
 
         total_slider_y = 0
         for slider in self.sliders:
@@ -330,8 +331,8 @@ class Cityscopy:
                 ).astype(np.uint8)
 
             # uncomment these to show intermediate images
-            cv2.imshow("binary_image", binary_image)
-            cv2.imshow("gradient_map", gradient_map)
+            cv2.imshow("binary_image_" + table_name, binary_image)
+            cv2.imshow("gradient_map_" + table_name, gradient_map)
             # reduce the colors based on slider threshold
             # binary_image_slider = np.where(
             #     (ch_l <= self.slider_l) & (ch_a <= self.slider_a) & (ch_b <= self.slider_b), 255, 0
@@ -452,7 +453,7 @@ class Cityscopy:
                             (50, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
 
             # draw the video to screen
-            cv2.imshow("scanner_gui_window", keystoned_video)
+            cv2.imshow("scanner_gui_window_" + table_name, keystoned_video)
 
         # close opencv
         video_capture.release()
@@ -707,7 +708,7 @@ class Cityscopy:
         time.sleep(1)
 
         # video winodw
-        cv2.namedWindow('canvas', cv2.WINDOW_NORMAL)
+        cv2.namedWindow('canvas_' + self.table_settings['table_name'], cv2.WINDOW_NORMAL)
 
         # top left, top right, bottom left, bottom right
         self.POINTS = 4 * [(0, 0)]
@@ -749,7 +750,7 @@ class Cityscopy:
                 for thisPnt in self.POINTS:
                     cv2.circle(self.FRAME, thisPnt, 10, (255, 0, 0), 1)
                 # show the video
-                cv2.imshow('canvas', self.FRAME)
+                cv2.imshow('canvas_' + self.table_settings['table_name'], self.FRAME)
             # when done selecting 4 pnts return
             return True
 
