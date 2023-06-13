@@ -741,7 +741,7 @@ class Cityscopy:
                 if key == 27:
                     return False
                 # wait for clicks
-                cv2.setMouseCallback('canvas', save_this_point)
+                cv2.setMouseCallback('canvas_' + self.table_settings['table_name'], save_this_point)
                 # read the WEBCAM frames
                 if not self.using_realsense:
                     _, self.FRAME = WEBCAM.read()
