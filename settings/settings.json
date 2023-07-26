@@ -8,7 +8,7 @@
     "cam_id": 0,
     "realsense": {
         "device_num": 1,
-        "active": true,
+        "active": false,
         "exposure": 478.0,
         "gain": 2
     },
@@ -17,7 +17,7 @@
     "max_b": 132,
     "gradient_min": 0.96,
     "gradient_max": 0.64,
-    "quantile": 0.67,
+    "quantile": 0.53,
     "interval": 500,
     "gui": true,
     "tag_length": 4,
@@ -33,9 +33,9 @@
         {
             "id": "slider0",
             "step_size": 0.01,
-            "x_min": 124,
-            "x_max": 862,
-            "y": 907,
+            "x_min": 363,
+            "x_max": 611,
+            "y": 664,
             "slider_l": 64,
             "slider_a": 255,
             "slider_b": 132
@@ -43,9 +43,9 @@
         {
             "id": "slider1",
             "step_size": 0.01,
-            "x_min": 1133,
-            "x_max": 1788,
-            "y": 907,
+            "x_min": 30,
+            "x_max": 361,
+            "y": 604,
             "slider_l": 58,
             "slider_a": 255,
             "slider_b": 132

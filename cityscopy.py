@@ -70,6 +70,7 @@ class Cityscopy:
     def __init__(self, path):
         # load info from json file
         self.settings_path = path
+        print("using settings file '{0}'".format(path))
         with open(path) as settings:
             self.table_settings = json.load(settings)
 
@@ -211,8 +212,15 @@ class Cityscopy:
 
     def scanner_function(self, mp_shared_dict):
         # get init keystones
+
+        if not os.path.exists(self.settings_path[:-5] + "_keystone.txt"):
+            print(self.settings_path[:-5] + "_keystone.txt does not exist. Execute run_keystone.py first!")
+            self.process_send_packet.kill()
+            quit()
+
+
         self.init_keystone = np.loadtxt(
-            self.get_folder_path() + 'keystone.txt', dtype=np.float32)
+            self.get_folder_path() + self.settings_path[:-5] + '_keystone.txt', dtype=np.float32)
 
         # define the table params
         grid_dim = (int(self.table_settings['ncols']),
@@ -672,7 +680,7 @@ class Cityscopy:
         Steps:
         saves an array of points to file
         """
-        filePath = self.get_folder_path() + "keystone.txt"
+        filePath = self.get_folder_path() + self.settings_path[:-5] + "_keystone.txt"
         np.savetxt(filePath, keystone_data_from_user_interaction)
         print("[!] keystone points were saved in", filePath)
 
@@ -727,7 +735,7 @@ class Cityscopy:
 
     def keystone(self):
         # file path to save
-        self.KEYSTONE_PATH = self.get_folder_path() + 'keystone.txt'
+        self.KEYSTONE_PATH = self.get_folder_path() + self.settings_path[:-5] + '_keystone.txt'
         print('keystone path:', self.KEYSTONE_PATH)
 
         # serial num of camera, to switch between cameras
@@ -759,7 +767,7 @@ class Cityscopy:
                 if key == 27:
                     return False
                 # wait for clicks
-                cv2.setMouseCallback('canvas', save_this_point)
+                cv2.setMouseCallback('canvas_' + self.table_settings['table_name'], save_this_point)
                 # read the WEBCAM frames
                 if not self.table_settings['realsense']['active']:
                     _, self.FRAME = WEBCAM.read()
