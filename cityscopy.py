@@ -70,6 +70,7 @@ class Cityscopy:
     def __init__(self, path):
         # load info from json file
         self.settings_path = path
+        print("using settings file '{0}'".format(path))
         with open(path) as settings:
             self.table_settings = json.load(settings)
 
@@ -759,7 +760,7 @@ class Cityscopy:
                 if key == 27:
                     return False
                 # wait for clicks
-                cv2.setMouseCallback('canvas', save_this_point)
+                cv2.setMouseCallback('canvas_' + self.table_settings['table_name'], save_this_point)
                 # read the WEBCAM frames
                 if not self.table_settings['realsense']['active']:
                     _, self.FRAME = WEBCAM.read()
