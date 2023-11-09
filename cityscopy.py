@@ -435,7 +435,7 @@ class Cityscopy:
                 cv2.putText(keystoned_video, "max_l: " + str(self.max_l) + " [v]",
                             (50, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
                 text_y += 20
-                cv2.putText(keystoned_video, "gradient min:%2.2f max:%2.2f " % (self.table_settings['gradient_min'], self.table_settings['gradient_max']) + " [5 / 6]",
+                cv2.putText(keystoned_video, "gradient top:%2.2f bottom:%2.2f " % (self.table_settings['gradient_min'], self.table_settings['gradient_max']) + " [5 / 6]",
                             (50, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
                 text_y += 20
                 cv2.putText(keystoned_video, "quantile: %2.2f" % self.quantile + " [q]",
@@ -461,6 +461,16 @@ class Cityscopy:
                             (50, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
                 text_y += 20
                 cv2.putText(keystoned_video, "slider{0}_x-max: ".format(self.active_slider_idx) + str(self.sliders[self.active_slider_idx].x_max) + " [c]",
+                            (50, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
+
+                text_y += 40
+                cv2.putText(keystoned_video, "[1,2,3,4]: select corner",
+                            (50, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
+                text_y += 20
+                cv2.putText(keystoned_video, "[w,a,s,d]: move corner",
+                            (50, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
+                text_y += 20
+                cv2.putText(keystoned_video, "[k]: save corner positions",
                             (50, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.65, WHITE, 1, cv2.LINE_AA)
 
             # draw the video to screen
